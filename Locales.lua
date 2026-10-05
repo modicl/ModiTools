@@ -62,7 +62,9 @@ local es = {
     ["Prepot test: 30 s."] = "Prueba de prepota: 30 s.",
     ["spellID %d added as a potion."] = "spellID %d agregado como poción.",
     ["spellID %d removed."] = "spellID %d quitado.",
-    ["Usage: /modi prepot test | add <spellID> | remove <spellID>"] = "Uso: /modi prepot test | add <spellID> | remove <spellID>",
+    ["Usage: /modi prepot test | add <spellID> | remove <spellID> | sound <soundkitID or file path>"] = "Uso: /modi prepot test | add <spellID> | remove <spellID> | sound <soundkitID o ruta del archivo>",
+    ["Sound when the potion is ready"] = "Sonido cuando la poción está lista",
+    ["Potion ready (voice)"] = "Poción lista (voz)",
 
     -- Alerta de threat
     ["LOSING AGGRO!"] = "¡PERDIENDO AGGRO!",

@@ -44,6 +44,11 @@ do
     end
 
     -- `en` es la clave de traducción; ns.LocalizeSounds() rellena `label` al crear la interfaz.
+    -- sonidos propios del addon (archivos en Media\)
+    add({ header = true, en = "ModiTools" })
+    add({ value = "mt_potion_ready", en = "Potion ready (voice)",
+          file = "Interface\\AddOns\\ModiTools\\Media\\potion_ready.mp3" })
+
     add({ header = true, en = "Classic" })
     add({ value = "raid", en = "Raid warning", id = 8959 })
     add({ value = "ready", en = "Ready check", id = 8960 })
@@ -101,6 +106,12 @@ local barBG = bar:CreateTexture(nil, "BACKGROUND")
 barBG:SetAllPoints()
 barBG:SetColorTexture(0, 0, 0, 0.6)
 
+-- velo gris para "no interrumpible" cuando el dato es secreto
+local lockedTex = bar:CreateTexture(nil, "ARTWORK", nil, 2)
+lockedTex:SetAllPoints()
+lockedTex:SetColorTexture(0.5, 0.5, 0.5, 1)
+lockedTex:SetAlpha(0)
+
 local spark = bar:CreateTexture(nil, "OVERLAY")
 spark:SetTexture("Interface\\CastingBar\\UI-CastingBar-Spark")
 spark:SetBlendMode("ADD")
@@ -133,6 +144,16 @@ local function SetBarColor(c)
     glow:SetBackdropBorderColor(c[1], c[2], c[3], 0.5)
 end
 
+-- "No interrumpible": en contenido restringido el booleano es secreto y no se puede comparar.
+-- SetAlphaFromBoolean lo acepta directamente: pinta un velo gris solo si es verdadero.
+local function SetLockedOverlay(tex, notInterruptible)
+    if tex.SetAlphaFromBoolean then
+        pcall(tex.SetAlphaFromBoolean, tex, notInterruptible, 0.65, 0)
+    else
+        tex:SetAlpha(0)
+    end
+end
+
 local function ReadCast()
     local name, _, tex, startMS, endMS, _, _, notInterruptible = UnitCastingInfo("focus")
     if name then
@@ -161,6 +182,7 @@ local function UpdateCastClassic()
         nameText:SetText(name)
         bar:SetMinMaxValues(0, cast.finish - cast.start)
         SetBarColor(notInt and c.colorLocked or (isChannel and c.colorChannel or c.colorCast))
+        lockedTex:SetAlpha(0)
         frame:Show()
     else
         cast.active = false
@@ -171,33 +193,43 @@ local function UpdateCastClassic()
     end
 end
 
--- Ruta alternativa para clientes que entregan datos de casteo "secretos":
--- el propio StatusBar anima el progreso a partir de un objeto de duración.
+-- Ruta para contenido restringido (Mythic+, raids, combate): nombre, ícono y tiempos son valores
+-- "secretos" que NO se pueden comparar ni usar en un `if`. Por eso:
+--   * que haya un casteo se sabe por la existencia del objeto de duración (nunca es secreto),
+--   * nombre e ícono se pasan directo a los widgets,
+--   * el progreso lo anima el propio StatusBar con SetTimerDuration.
 local function UpdateCastTimer()
     local c = cfg()
     local isChannel = false
     local dur = UnitCastingDuration and UnitCastingDuration("focus")
-    local name, _, tex = UnitCastingInfo("focus")
-    if not name then
+    if not dur then
         isChannel = true
         dur = UnitChannelDuration and UnitChannelDuration("focus")
-        name, _, tex = UnitChannelInfo("focus")
     end
-    if not name or not dur then
+    if not dur then
         cast.timer = false
         if not c.unlocked and GetTime() >= failedUntil then
             frame:Hide()
         end
         return
     end
+
+    local name, tex, notInt
+    if isChannel then
+        name, _, tex, _, _, _, notInt = UnitChannelInfo("focus")
+    else
+        name, _, tex, _, _, _, _, notInt = UnitCastingInfo("focus")
+    end
     local dirs = Enum and Enum.StatusBarTimerDirection
     local interp = Enum and Enum.StatusBarInterpolation and Enum.StatusBarInterpolation.Immediate
     local dir = dirs and (isChannel and dirs.RemainingTime or dirs.ElapsedTime)
-    icon:SetTexture(tex)
-    nameText:SetText(name)
+
+    pcall(icon.SetTexture, icon, tex)
+    pcall(nameText.SetText, nameText, name)
     timeText:SetText("")
     bar:SetTimerDuration(dur, interp, dir)
     SetBarColor(isChannel and c.colorChannel or c.colorCast)
+    SetLockedOverlay(lockedTex, notInt)
     cast.active = false
     cast.timer = true
     failedUntil = 0
@@ -224,6 +256,7 @@ local function ShowFailed(text)
     bar:SetMinMaxValues(0, 1)
     bar:SetValue(1)
     SetBarColor(cfg().colorFailed)
+    lockedTex:SetAlpha(0)
     frame:Show()
 end
 
@@ -235,6 +268,7 @@ function ShowPreview()
     bar:SetMinMaxValues(0, 1)
     bar:SetValue(0.6)
     SetBarColor(cfg().colorCast)
+    lockedTex:SetAlpha(0)
     frame:Show()
 end
 
@@ -282,6 +316,8 @@ function ns.PlaySoundKey(key, custom)
     local snd = soundIndex[key]
     if snd and snd.id then
         PlaySound(snd.id, "Master")
+    elseif snd and snd.file then
+        PlaySoundFile(snd.file, "Master")
     end
 end
 

@@ -22,6 +22,8 @@ local defaults = {
     colorWarn = { 1, 0.2, 0.2, 1 },
     colorBorder = { 0, 0, 0, 1 },
     extra = {},   -- spellIDs de pociones agregados a mano
+    soundReady = true, soundReadyKey = "mt_potion_ready",   -- sonido al terminar el cooldown de la poción
+    soundCustom = "",   -- soundkit ID o ruta de archivo, usado con la opción "Personalizado"
 }
 
 local Prepot = {}
@@ -224,6 +226,66 @@ local function CheckTracked()
     end
 end
 
+---------------------------------------------------------------------------
+-- Cooldown de la poción: sonido cuando vuelve a estar lista
+---------------------------------------------------------------------------
+
+local watch   -- { spell, since, expiration, estimated }
+local watcher = CreateFrame("Frame")
+local watchElapsed = 0
+
+local function SpellCooldownEnd(spellID)
+    local start, duration
+    if C_Spell and C_Spell.GetSpellCooldown then
+        local info = C_Spell.GetSpellCooldown(spellID)
+        if info then start, duration = info.startTime, info.duration end
+    elseif GetSpellCooldown then
+        start, duration = GetSpellCooldown(spellID)
+    end
+    -- se ignora el GCD y el cooldown de 1 s de las pociones usadas fuera de combate
+    if start and duration and duration > 2 and start > 0 then return start + duration end
+end
+
+local function BaseCooldownOf(spellID)
+    local fn = (C_Spell and C_Spell.GetSpellBaseCooldown) or GetSpellBaseCooldown
+    if not fn then return nil end
+    local ok, ms = pcall(fn, spellID)
+    if ok and type(ms) == "number" and ms > 0 then return ms / 1000 end
+end
+
+local function PlayReady()
+    local c = cfg()
+    if ns.debug then print(PREFIX .. "prepot: potion ready") end
+    if c.soundReady then ns.PlaySoundKey(c.soundReadyKey, c.soundCustom) end
+end
+
+watcher:SetScript("OnUpdate", function(_, dt)
+    if not watch then return end
+    watchElapsed = watchElapsed + dt
+    if watchElapsed < 0.25 then return end
+    watchElapsed = 0
+    local now = GetTime()
+    if now - watch.since > 660 then
+        watch = nil   -- seguridad: se deja de vigilar tras 11 minutos
+        return
+    end
+    if not watch.expiration then
+        local ok, expiration = pcall(SpellCooldownEnd, watch.spell)
+        if ok then
+            -- puede ser nil: el cooldown aún no empieza (p. ej. poción usada fuera de combate)
+            watch.expiration = expiration
+        elseif not watch.estimated then
+            -- datos ocultos (contenido restringido): se estima con el cooldown base de la poción
+            watch.expiration = watch.since + (BaseCooldownOf(watch.spell) or 300)
+            watch.estimated = true
+        end
+    end
+    if watch.expiration and now >= watch.expiration then
+        watch = nil
+        PlayReady()
+    end
+end)
+
 frame:SetScript("OnEvent", function(_, event, _, b, c, d)
     if event == "UNIT_SPELLCAST_SENT" then
         -- args: unit, target, castGUID, spellID
@@ -238,6 +300,7 @@ frame:SetScript("OnEvent", function(_, event, _, b, c, d)
         if before then
             pending[c] = nil
             if ns.debug then print(PREFIX .. "prepot detected: " .. tostring(c)) end
+            watch = { spell = c, since = GetTime() }   -- vigila el cooldown (aunque la poción no deje buff)
             C_Timer.After(0.2, function() pcall(Detect, c, before) end)
         end
     elseif event == "UNIT_AURA" then
@@ -282,6 +345,7 @@ function Prepot.Apply()
     else
         frame:SetScript("OnUpdate", nil)
         tracked = nil
+        watch = nil
     end
     Render()
     if tracked then
@@ -303,7 +367,14 @@ function Prepot.Slash(arg)
         cfg().extra[id] = nil
         potionSpell[id] = nil
         print(PREFIX .. string.format(L["spellID %d removed."], id))
+    elseif cmd == "sound" and rest ~= "" then
+        cfg().soundCustom = rest
+        cfg().soundReadyKey = "custom"
+        Prepot.Apply()
+        if ns.RefreshOptions then ns.RefreshOptions() end
+        print(PREFIX .. string.format(L["Custom sound: %s"], rest))
+        ns.PlaySoundKey("custom", rest)
     else
-        print(PREFIX .. L["Usage: /modi prepot test | add <spellID> | remove <spellID>"])
+        print(PREFIX .. L["Usage: /modi prepot test | add <spellID> | remove <spellID> | sound <soundkitID or file path>"])
     end
 end

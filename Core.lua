@@ -217,6 +217,22 @@ SlashCmdList["MODITOOLS"] = function(msg)
             print(ns.PREFIX .. string.format(L["Profiles: %s (active: %s)"], table.concat(ns.ListProfiles(), ", "), ns.profileName))
             print(ns.PREFIX .. L["Usage: /modi profile use <name>"])
         end
+    elseif cmd == "diag" then
+        -- diagnóstico: qué datos de casteo entrega el cliente (útil en Mythic+ / contenido restringido)
+        local function secret(v) return issecretvalue and issecretvalue(v) or false end
+        local shown = false
+        for _, unit in ipairs({ "focus", "target", "nameplate1", "nameplate2" }) do
+            if UnitExists(unit) then
+                shown = true
+                local ok, name, _, _, startMS = pcall(UnitCastingInfo, unit)
+                local dur = (UnitCastingDuration and UnitCastingDuration(unit))
+                    or (UnitChannelDuration and UnitChannelDuration(unit))
+                print(ns.PREFIX .. string.format("%s: duration object=%s, name secret=%s, time secret=%s, raid marker=%s",
+                    unit, tostring(dur ~= nil), tostring(ok and secret(name)), tostring(ok and secret(startMS)),
+                    tostring(GetRaidTargetIndex and GetRaidTargetIndex(unit))))
+            end
+        end
+        if not shown then print(ns.PREFIX .. "diag: target a casting enemy (or focus it) and run again.") end
     elseif cmd == "debug" then
         ns.debug = not ns.debug
         print(ns.PREFIX .. (ns.debug and L["Debug enabled."] or L["Debug disabled."]))

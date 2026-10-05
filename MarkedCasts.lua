@@ -54,6 +54,16 @@ local function SetBarColor(f, c)
     f.bar:SetStatusBarColor(c[1], c[2], c[3], c[4] or 1)
 end
 
+-- "No interrumpible": en contenido restringido el booleano es secreto y no se puede comparar.
+-- SetAlphaFromBoolean lo acepta directamente: pinta un velo gris solo si es verdadero.
+local function SetLockedOverlay(tex, notInterruptible)
+    if tex.SetAlphaFromBoolean then
+        pcall(tex.SetAlphaFromBoolean, tex, notInterruptible, 0.65, 0)
+    else
+        tex:SetAlpha(0)
+    end
+end
+
 local function CreateBar()
     local f = CreateFrame("Frame", nil, anchor)
     f:Hide()
@@ -66,6 +76,12 @@ local function CreateBar()
 
     f.bg = f.bar:CreateTexture(nil, "BACKGROUND")
     f.bg:SetAllPoints()
+
+    -- velo gris para "no interrumpible" cuando el dato es secreto
+    f.locked = f.bar:CreateTexture(nil, "ARTWORK", nil, 2)
+    f.locked:SetAllPoints()
+    f.locked:SetColorTexture(0.5, 0.5, 0.5, 1)
+    f.locked:SetAlpha(0)
 
     f.border = CreateFrame("Frame", nil, f, "BackdropTemplate")
     f.border:SetAllPoints()
@@ -148,6 +164,7 @@ local function ShowPreview()
             f.bar:SetMinMaxValues(0, 1)
             f.bar:SetValue(s.value)
             SetBarColor(f, s.color)
+            f.locked:SetAlpha(0)
             PositionBar(f, k)
             f:Show()
         end
@@ -234,32 +251,42 @@ local function FillClassic(f, unit)
     f.spellName = name
     f.bar:SetMinMaxValues(0, endS - startS)
     SetBarColor(f, notInt and c.colorLocked or (isChannel and c.colorChannel or c.colorCast))
+    f.locked:SetAlpha(0)
     return true
 end
 
--- Ruta alternativa para datos "secretos": el StatusBar anima desde un objeto de duración.
+-- Ruta para contenido restringido (Mythic+, raids, combate): los datos del casteo son "secretos" y no
+-- se pueden comparar ni usar en un `if`. Que haya un casteo se sabe por la existencia del objeto de
+-- duración; nombre e ícono van directo a los widgets; el StatusBar anima el progreso por sí solo.
 local function FillTimer(f, unit)
     local c = cfg()
     local isChannel = false
     local dur = UnitCastingDuration and UnitCastingDuration(unit)
-    local name = UnitCastingInfo(unit)
-    if not name then
+    if not dur then
         isChannel = true
         dur = UnitChannelDuration and UnitChannelDuration(unit)
-        name = UnitChannelInfo(unit)
     end
-    if not name or not dur then return false end
+    if not dur then return false end
+
+    local name, notInt
+    if isChannel then
+        name, _, _, _, _, _, notInt = UnitChannelInfo(unit)
+    else
+        name, _, _, _, _, _, _, notInt = UnitCastingInfo(unit)
+    end
     local dirs = Enum and Enum.StatusBarTimerDirection
     local interp = Enum and Enum.StatusBarInterpolation and Enum.StatusBarInterpolation.Immediate
     local dir = dirs and (isChannel and dirs.RemainingTime or dirs.ElapsedTime)
+
     f.mode = "timer"
     f.channel = isChannel
-    f.nameText:SetText(name)
-    local ok, s = pcall(tostring, name)
-    f.spellName = ok and s or nil
+    pcall(f.nameText.SetText, f.nameText, name)
+    local ok, text = pcall(tostring, name)
+    f.spellName = ok and text or nil
     f.timeText:SetText("")
     f.bar:SetTimerDuration(dur, interp, dir)
     SetBarColor(f, isChannel and c.colorChannel or c.colorCast)
+    SetLockedOverlay(f.locked, notInt)
     return true
 end
 
@@ -321,6 +348,7 @@ local function Resolve(f, interrupted)
         f.bar:SetMinMaxValues(0, 1)
         f.bar:SetValue(1)
         SetBarColor(f, interrupted and c.colorInterrupted or c.colorNotInterrupted)
+        f.locked:SetAlpha(0)
         f.nameText:SetText(interrupted and L["Interrupted"] or L["Not interrupted"])
         f.timeText:SetText("")
     end

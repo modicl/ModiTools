@@ -815,6 +815,8 @@ local function NewBuilder(panel)
     function b:Button(text, onClick)
         local x, y = self:Next()
         local btn = CreateButton(panel, text, 160, 22, onClick)
+        -- el botón se ensancha para que el texto quepa (máximo: el ancho de la columna)
+        btn:SetWidth(math.max(160, math.min(262, btn.label:GetStringWidth() + 28)))
         btn:SetPoint("TOPLEFT", x, y)
     end
 
@@ -1510,6 +1512,9 @@ function ns.CreateOptions()
         { value = "BOTTOM", label = L["Below"] },
         { value = "TOP", label = L["Above"] },
     }
+    local prepotSounds = {}
+    for i, e in ipairs(ns.FocusSounds) do prepotSounds[i] = e end
+    prepotSounds.preview = function(v) ns.PlaySoundKey(v, ns.db.prepot.soundCustom) end
     local pb = MakePage("prepot", L["Prepot"], L["Icon with the time left on the potion you used."], "prepot")
     GeneralSection(pb, "prepot")
     pb:Header(L["Appearance"])
@@ -1518,6 +1523,9 @@ function ns.CreateOptions()
     pb:Slider(L["Font size"], 8, 40, 1, Bind("prepot", "fontSize"))
     pb:Slider(L["Warn at (s)"], 0, 30, 1, Bind("prepot", "warnAt"))
     pb:Cycle(L["Time position"], posOptions, Bind("prepot", "textPos"))
+    pb:Header(L["Sound"])
+    pb:Check(L["Sound when the potion is ready"], Bind("prepot", "soundReady"))
+    pb:Cycle(L["Ready sound"], prepotSounds, Bind("prepot", "soundReadyKey"))
     pb:Button(L["Test (30 s)"], function() ns.modules.prepot.Slash("test") end)
     pb:Button(L["Restore defaults"], function() ns.ResetModule("prepot") end)
     pb:NewColumn()
@@ -1568,7 +1576,8 @@ function ns.CreateOptions()
     tl:NewColumn()
     tl:Header(L["On the timeline"])
     tl:SpellList(function() return ns.db.timeline.spells end, function(id)
-        local _, msg = ns.modules.timeline.RemoveSpell(id)
+        -- RemoveEntry respeta el signo del ID (negativo = objeto); RemoveSpell lo volvería positivo
+        local _, msg = ns.modules.timeline.RemoveEntry(id)
         tlStatus = msg
         ns.RefreshOptions()
     end, 12)

@@ -2,20 +2,22 @@
 --
 -- /modi                         -> abrir opciones
 -- /modi yards | focus | marked | prepot  -> activar/desactivar la herramienta
--- /modi unlock <yards|focus|marked|prepot|all>
--- /modi lock   <yards|focus|marked|prepot|all>
+-- /modi unlock <yards|focus|marked|threat|brez|prepot|all>
+-- /modi lock   <yards|focus|marked|threat|brez|prepot|all>
 -- /modi reset                   -> restablece posiciones
 -- /modi size <10-72>            -> tamaño de la fuente de las yardas
 -- /modi prepot test|add <id>|remove <id>
 -- /modi debug                   -> muestra los eventos de casteo del focus
 
 local ADDON_NAME, ns = ...
+local L = ns.L
 
 ns.PREFIX = "|cff33aaffModiTools:|r "
 ns.defaults = {}
 ns.modules = {}
 ns.order = {}
 ns.debug = false
+ns.globalDefaults = {}   -- ajustes comunes a todos los perfiles (ventana, minimapa, idioma)
 
 function ns.RegisterModule(key, defaults, mod)
     ns.defaults[key] = defaults
@@ -40,6 +42,8 @@ local function MergeDefaults(target, src)
         end
     end
 end
+
+ns.MergeDefaults = MergeDefaults
 
 ---------------------------------------------------------------------------
 -- Utilidades de marcos
@@ -97,9 +101,8 @@ loader:SetScript("OnEvent", function(self, _, name)
     if name ~= ADDON_NAME then return end
     self:UnregisterEvent("ADDON_LOADED")
 
-    ModiToolsDB = ModiToolsDB or {}
-    ns.db = ModiToolsDB
-    MergeDefaults(ns.db, ns.defaults)
+    ns.InitProfiles()
+    ns.SetLanguage(ns.global.language or ns.DetectLanguage())
 
     for _, key in ipairs(ns.order) do
         ns.modules[key].Apply()
@@ -118,23 +121,21 @@ local function Targets(arg)
 end
 
 local function OpenOptions()
-    if Settings and Settings.OpenToCategory and ns.categoryID then
-        Settings.OpenToCategory(ns.categoryID)
-    elseif InterfaceOptionsFrame_OpenToCategory then
-        InterfaceOptionsFrame_OpenToCategory("ModiTools")
-    end
+    if ns.ToggleWindow then ns.ToggleWindow() end
 end
 
 local function Help()
-    print(ns.PREFIX .. "/modi, /modi yards|focus|marked|prepot, /modi unlock|lock <yards|focus|marked|prepot|all>, /modi reset, /modi size <n>, /modi prepot test|add <id>|remove <id>")
+    print(ns.PREFIX .. "/modi, /modi yards|focus|marked|threat|brez|prepot, /modi unlock|lock <yards|focus|marked|threat|brez|prepot|all>, /modi reset, /modi minimap, /modi lang en|es, /modi profile, /modi size <n>, /modi prepot test|add <id>|remove <id>")
 end
 
 SLASH_MODITOOLS1 = "/modi"
 SLASH_MODITOOLS2 = "/moditools"
 SlashCmdList["MODITOOLS"] = function(msg)
     local db = ns.db
-    msg = (msg or ""):lower():match("^%s*(.-)%s*$")
+    -- solo el comando se pasa a minúsculas: el resto (texto, rutas) conserva su formato
+    msg = (msg or ""):match("^%s*(.-)%s*$")
     local cmd, arg = msg:match("^(%S*)%s*(.*)$")
+    cmd = cmd:lower()
 
     if cmd == "" or cmd == "options" then
         OpenOptions()
@@ -144,33 +145,37 @@ SlashCmdList["MODITOOLS"] = function(msg)
             db[cmd].enabled = not db[cmd].enabled
             mod.Apply()
             if ns.RefreshOptions then ns.RefreshOptions() end
-            print(ns.PREFIX .. cmd .. (db[cmd].enabled and " activado." or " desactivado."))
+            print(ns.PREFIX .. string.format(db[cmd].enabled and L["%s enabled."] or L["%s disabled."], cmd))
         elseif mod.Slash then
             mod.Slash(arg)
         else
             Help()
         end
     elseif cmd == "unlock" or cmd == "lock" then
-        local list = Targets(arg)
+        local list = Targets(arg:lower())
         if not list then
-            print(ns.PREFIX .. "uso: /modi " .. cmd .. " <yards|focus|marked|prepot|all>")
+            print(ns.PREFIX .. string.format(L["Usage: /modi %s <yards|focus|marked|threat|brez|prepot|all>"], cmd))
             return
         end
         for _, key in ipairs(list) do
-            db[key].unlocked = (cmd == "unlock")
-            ns.modules[key].Apply()
+            if not ns.modules[key].noPosition then
+                db[key].unlocked = (cmd == "unlock")
+                ns.modules[key].Apply()
+            end
         end
         if ns.RefreshOptions then ns.RefreshOptions() end
         print(ns.PREFIX .. (cmd == "unlock"
-            and "desbloqueado. Arrastra con click izquierdo para mover."
-            or "fijado."))
+            and L["unlocked. Drag with left click to move."]
+            or L["locked."]))
     elseif cmd == "reset" then
         for _, key in ipairs(ns.order) do
             local d = ns.defaults[key]
-            db[key].point, db[key].x, db[key].y = d.point, d.x, d.y
-            ns.modules[key].Apply()
+            if not ns.modules[key].noPosition then
+                db[key].point, db[key].x, db[key].y = d.point, d.x, d.y
+                ns.modules[key].Apply()
+            end
         end
-        print(ns.PREFIX .. "posiciones restablecidas.")
+        print(ns.PREFIX .. L["positions reset."])
     elseif cmd == "size" then
         local n = tonumber(arg)
         if n and n >= 10 and n <= 72 then
@@ -178,11 +183,32 @@ SlashCmdList["MODITOOLS"] = function(msg)
             ns.modules.yards.Apply()
             if ns.RefreshOptions then ns.RefreshOptions() end
         else
-            print(ns.PREFIX .. "uso: /modi size <10-72>")
+            print(ns.PREFIX .. L["Usage: /modi size <10-72>"])
+        end
+    elseif cmd == "minimap" then
+        ns.global.minimap.hide = not ns.global.minimap.hide
+        if ns.UpdateMinimap then ns.UpdateMinimap() end
+        if ns.RefreshOptions then ns.RefreshOptions() end
+        print(ns.PREFIX .. (ns.global.minimap.hide and L["Minimap icon hidden."] or L["Minimap icon shown."]))
+    elseif cmd == "lang" then
+        local lang = arg:lower()
+        if lang == "en" or lang == "es" then
+            ns.ChangeLanguage(lang)
+        else
+            print(ns.PREFIX .. L["Usage: /modi lang en|es"])
+        end
+    elseif cmd == "profile" then
+        local sub, rest = arg:match("^(%S*)%s*(.*)$")
+        if sub:lower() == "use" and rest ~= "" then
+            local ok, err = ns.SetProfile(rest)
+            print(ns.PREFIX .. (ok and string.format(L["Profile '%s' is now active."], rest) or err))
+        else
+            print(ns.PREFIX .. string.format(L["Profiles: %s (active: %s)"], table.concat(ns.ListProfiles(), ", "), ns.profileName))
+            print(ns.PREFIX .. L["Usage: /modi profile use <name>"])
         end
     elseif cmd == "debug" then
         ns.debug = not ns.debug
-        print(ns.PREFIX .. "depuración " .. (ns.debug and "activada." or "desactivada."))
+        print(ns.PREFIX .. (ns.debug and L["Debug enabled."] or L["Debug disabled."]))
     else
         Help()
     end

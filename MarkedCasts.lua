@@ -6,6 +6,7 @@
 
 local _, ns = ...
 local PREFIX = ns.PREFIX
+local L = ns.L
 
 local defaults = {
     enabled = true, unlocked = false,
@@ -133,9 +134,9 @@ end
 local function ShowPreview()
     local c = cfg()
     local samples = {
-        { marker = 8, text = "Cast de ejemplo", time = "1.8", color = c.colorCast, value = 0.6 },
-        { marker = 1, text = "Interrumpido", time = "", color = c.colorInterrupted, value = 1 },
-        { marker = 3, text = "No interrumpido", time = "", color = c.colorNotInterrupted, value = 1 },
+        { marker = 8, text = L["Sample cast"], time = "1.8", color = c.colorCast, value = 0.6 },
+        { marker = 1, text = L["Interrupted"], time = "", color = c.colorInterrupted, value = 1 },
+        { marker = 3, text = L["Not interrupted"], time = "", color = c.colorNotInterrupted, value = 1 },
     }
     for k, s in ipairs(samples) do
         local f = pool[k]
@@ -270,7 +271,7 @@ local function Fill(f, unit)
     if ok2 then return found2 end
     if not warned then
         warned = true
-        print(PREFIX .. "no se pudo leer el casteo de un mob marcado: " .. tostring(found2))
+        print(PREFIX .. string.format(L["Could not read a marked mob's cast: %s"], tostring(found2)))
     end
     return false
 end
@@ -302,9 +303,9 @@ local function Announce(f)
             l, l + 64, t, t + 64)
         local spell = f.spellName and (" " .. f.spellName) or ""
         if f.result == "int" then
-            print(PREFIX .. icon .. spell .. " |cff33ff55interrumpido|r")
+            print(PREFIX .. icon .. spell .. " |cff33ff55" .. L["interrupted"] .. "|r")
         else
-            print(PREFIX .. icon .. spell .. " |cffff3333NO interrumpido|r")
+            print(PREFIX .. icon .. spell .. " |cffff3333" .. L["NOT interrupted"] .. "|r")
         end
     end)
 end
@@ -320,7 +321,7 @@ local function Resolve(f, interrupted)
         f.bar:SetMinMaxValues(0, 1)
         f.bar:SetValue(1)
         SetBarColor(f, interrupted and c.colorInterrupted or c.colorNotInterrupted)
-        f.nameText:SetText(interrupted and "Interrumpido" or "No interrumpido")
+        f.nameText:SetText(interrupted and L["Interrupted"] or L["Not interrupted"])
         f.timeText:SetText("")
     end
     Layout()
@@ -390,12 +391,12 @@ anchor:SetScript("OnEvent", function(_, event, unit, ...)
     local f = byUnit[unit]
 
     if startEvents[event] then
-        if ns.debug then print(PREFIX .. "marcado " .. unit .. ": " .. event) end
+        if ns.debug then print(PREFIX .. "marked " .. unit .. ": " .. event) end
         pcall(RefreshUnit, unit)
     elseif not f then
         return
     elseif event == "UNIT_SPELLCAST_INTERRUPTED" then
-        if ns.debug then print(PREFIX .. "marcado " .. unit .. ": " .. event) end
+        if ns.debug then print(PREFIX .. "marked " .. unit .. ": " .. event) end
         Resolve(f, true)
     elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
         -- en los channels SUCCEEDED llega al inicio: se ignora
@@ -441,7 +442,7 @@ local function SetEvents(on)
     if not on then return end
     for _, e in ipairs(eventList) do
         local ok = pcall(anchor.RegisterEvent, anchor, e)
-        if not ok then print(PREFIX .. "evento no disponible: " .. e) end
+        if not ok then print(PREFIX .. string.format(L["Event not available: %s"], e)) end
     end
 end
 

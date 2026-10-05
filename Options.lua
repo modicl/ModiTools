@@ -1,11 +1,93 @@
--- Panel de opciones: panel principal + subpáneles de personalización.
+-- Interfaz de ModiTools: ventana propia con estilo "Steam clásico"
+-- (verde oliva, bordes biselados, acento dorado).
+-- Barra lateral de navegación a la izquierda y una página por herramienta a la derecha.
 
 local _, ns = ...
+local L = ns.L
 
-local ROW = 26
-local COLX = { 16, 330 }
-local MAXROWS = 15
-local builders = {}
+---------------------------------------------------------------------------
+-- Paleta y utilidades de estilo
+---------------------------------------------------------------------------
+
+local C = {
+    bg       = { 0.298, 0.345, 0.267 },   -- #4C5844
+    bgDark   = { 0.243, 0.275, 0.216 },   -- #3E4637
+    bgDarker = { 0.165, 0.188, 0.145 },   -- #2A3025
+    light    = { 0.533, 0.569, 0.502 },   -- #889180
+    dark     = { 0.161, 0.180, 0.137 },   -- #292E23
+    text     = { 1, 1, 1 },
+    muted    = { 0.627, 0.667, 0.584 },   -- #A0AA95
+    accent   = { 0.769, 0.710, 0.314 },   -- #C4B550
+    hover    = { 0.361, 0.420, 0.322 },   -- #5C6B52
+    select   = { 0.353, 0.416, 0.314 },   -- #5A6A50
+}
+
+local function rgb(c, a) return c[1], c[2], c[3], a or 1 end
+
+-- Borde biselado de 1 px: claro arriba/izquierda y oscuro abajo/derecha (hundido al revés).
+local function Bevel(f, sunken)
+    if not f.bev then
+        local b = {}
+        for _, k in ipairs({ "top", "left", "bottom", "right" }) do
+            b[k] = f:CreateTexture(nil, "BORDER")
+        end
+        b.top:SetPoint("TOPLEFT"); b.top:SetPoint("TOPRIGHT"); b.top:SetHeight(1)
+        b.bottom:SetPoint("BOTTOMLEFT"); b.bottom:SetPoint("BOTTOMRIGHT"); b.bottom:SetHeight(1)
+        b.left:SetPoint("TOPLEFT"); b.left:SetPoint("BOTTOMLEFT"); b.left:SetWidth(1)
+        b.right:SetPoint("TOPRIGHT"); b.right:SetPoint("BOTTOMRIGHT"); b.right:SetWidth(1)
+        f.bev = b
+    end
+    local tl, br = C.light, C.dark
+    if sunken then tl, br = C.dark, C.light end
+    f.bev.top:SetColorTexture(rgb(tl))
+    f.bev.left:SetColorTexture(rgb(tl))
+    f.bev.bottom:SetColorTexture(rgb(br))
+    f.bev.right:SetColorTexture(rgb(br))
+end
+
+local function Skin(f, color, sunken)
+    if not f.fill then
+        f.fill = f:CreateTexture(nil, "BACKGROUND")
+        f.fill:SetAllPoints()
+    end
+    f.fill:SetColorTexture(rgb(color))
+    Bevel(f, sunken)
+end
+
+-- Mayúsculas que también cubren las vocales acentuadas del español (string.upper no lo hace).
+local ACCENTS = { ["á"] = "Á", ["é"] = "É", ["í"] = "Í", ["ó"] = "Ó", ["ú"] = "Ú", ["ñ"] = "Ñ", ["ü"] = "Ü" }
+local function Upper(text)
+    return (string.upper(text):gsub("[\195][\161-\188]", function(ch) return ACCENTS[ch] or ch end))
+end
+
+local function Label(parent, text, size, color)
+    local fs = parent:CreateFontString(nil, "ARTWORK")
+    fs:SetFont(STANDARD_TEXT_FONT, size or 12, "")
+    fs:SetTextColor(rgb(color or C.text))
+    fs:SetJustifyH("LEFT")
+    if text then fs:SetText(text) end
+    return fs
+end
+
+local function CreateButton(parent, text, w, h, onClick)
+    local b = CreateFrame("Button", nil, parent)
+    b:SetSize(w, h)
+    Skin(b, C.bg, false)
+    b.label = Label(b, text, 12, C.text)
+    b.label:SetPoint("CENTER")
+    b:SetScript("OnEnter", function(self) self.fill:SetColorTexture(rgb(C.hover)) end)
+    b:SetScript("OnLeave", function(self) self.fill:SetColorTexture(rgb(C.bg)) end)
+    b:SetScript("OnMouseDown", function(self)
+        Bevel(self, true)
+        self.label:SetPoint("CENTER", 1, -1)
+    end)
+    b:SetScript("OnMouseUp", function(self)
+        Bevel(self, false)
+        self.label:SetPoint("CENTER", 0, 0)
+    end)
+    if onClick then b:SetScript("OnClick", onClick) end
+    return b
+end
 
 ---------------------------------------------------------------------------
 -- Selector de color (compatible con la API nueva y la antigua)
@@ -54,10 +136,10 @@ end
 -- cada elemento trae su botón "Probar" dentro de la lista.
 ---------------------------------------------------------------------------
 
-local ITEM_H = 20
-local TITLE_H = 22
+local ITEM_H = 22
+local TITLE_H = 24
 local MAX_ROWS = 9
-local MENU_W = 210
+local MENU_W = 220
 local SCROLL_W = 14
 local PLAY_W = 46
 local menu
@@ -91,11 +173,11 @@ local function RenderMenu(m)
         if entry.isCategory then
             item.arrow:Show()
             item.play:Hide()
-            if entry.hasCurrent then item.text:SetTextColor(0.3, 1, 0.4) else item.text:SetTextColor(1, 0.82, 0) end
+            item.text:SetTextColor(rgb(entry.hasCurrent and C.accent or C.text))
         else
             item.arrow:Hide()
             item.play:SetShown(m.preview ~= nil)
-            if entry.value == m.current then item.text:SetTextColor(0.3, 1, 0.4) else item.text:SetTextColor(1, 1, 1) end
+            item.text:SetTextColor(rgb(entry.value == m.current and C.accent or C.text))
         end
         item:Show()
     end
@@ -120,15 +202,15 @@ local function ShowList(m, entries, title, focusValue)
     m.titleBar:SetShown(title ~= nil)
     if title then m.titleBar.text:SetText("<  " .. title) end
 
-    local rightInset = 1 + (scrollable and SCROLL_W or 0)
+    local rightInset = 2 + (scrollable and SCROLL_W or 0)
     for i = 1, MAX_ROWS do
         local item = m.items[i]
-        item:SetPoint("TOPLEFT", 1, -1 - top - (i - 1) * ITEM_H)
-        item:SetPoint("TOPRIGHT", -rightInset, -1 - top - (i - 1) * ITEM_H)
+        item:SetPoint("TOPLEFT", 2, -2 - top - (i - 1) * ITEM_H)
+        item:SetPoint("TOPRIGHT", -rightInset, -2 - top - (i - 1) * ITEM_H)
     end
     m.scroll:ClearAllPoints()
-    m.scroll:SetPoint("TOPRIGHT", -2, -2 - top)
-    m.scroll:SetPoint("BOTTOMRIGHT", -2, 2)
+    m.scroll:SetPoint("TOPRIGHT", -3, -3 - top)
+    m.scroll:SetPoint("BOTTOMRIGHT", -3, 3)
     m.scroll:SetShown(scrollable)
 
     m.offset = 0
@@ -138,7 +220,7 @@ local function ShowList(m, entries, title, focusValue)
         end
     end
 
-    m:SetSize(MENU_W, top + rows * ITEM_H + 2)
+    m:SetSize(MENU_W, top + rows * ITEM_H + 4)
     RenderMenu(m)
 end
 
@@ -156,18 +238,12 @@ end
 
 local function GetMenu()
     if menu then return menu end
-    menu = CreateFrame("Frame", "ModiToolsDropdownMenu", UIParent, "BackdropTemplate")
+    menu = CreateFrame("Frame", "ModiToolsDropdownMenu", UIParent)
     menu:SetFrameStrata("FULLSCREEN_DIALOG")
     menu:SetClampedToScreen(true)
     menu:EnableMouse(true)
     menu:EnableMouseWheel(true)
-    menu:SetBackdrop({
-        bgFile = "Interface/Buttons/WHITE8x8",
-        edgeFile = "Interface/Buttons/WHITE8x8",
-        edgeSize = 1,
-    })
-    menu:SetBackdropColor(0.08, 0.08, 0.1, 0.97)
-    menu:SetBackdropBorderColor(0.4, 0.4, 0.45, 1)
+    Skin(menu, C.bgDarker, false)
     menu.items = {}
     menu.entries = {}
     menu.offset = 0
@@ -175,16 +251,13 @@ local function GetMenu()
     -- barra superior para volver a las categorías
     local bar = CreateFrame("Button", nil, menu)
     bar:SetHeight(TITLE_H)
-    bar:SetPoint("TOPLEFT", 1, -1)
-    bar:SetPoint("TOPRIGHT", -1, -1)
-    local barBG = bar:CreateTexture(nil, "BACKGROUND")
-    barBG:SetAllPoints()
-    barBG:SetColorTexture(1, 1, 1, 0.08)
-    local barHL = bar:CreateTexture(nil, "HIGHLIGHT")
-    barHL:SetAllPoints()
-    barHL:SetColorTexture(1, 1, 1, 0.15)
-    bar.text = bar:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    bar:SetPoint("TOPLEFT", 2, -2)
+    bar:SetPoint("TOPRIGHT", -2, -2)
+    Skin(bar, C.bg, false)
+    bar.text = Label(bar, "", 12, C.accent)
     bar.text:SetPoint("LEFT", 8, 0)
+    bar:SetScript("OnEnter", function(self) self.fill:SetColorTexture(rgb(C.hover)) end)
+    bar:SetScript("OnLeave", function(self) self.fill:SetColorTexture(rgb(C.bg)) end)
     bar:SetScript("OnClick", function() ShowCategories(menu) end)
     bar:Hide()
     menu.titleBar = bar
@@ -194,32 +267,23 @@ local function GetMenu()
         item:SetHeight(ITEM_H)
         item.hl = item:CreateTexture(nil, "HIGHLIGHT")
         item.hl:SetAllPoints()
-        item.hl:SetColorTexture(1, 1, 1, 0.15)
-        item.text = item:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+        item.hl:SetColorTexture(rgb(C.hover, 0.8))
+        item.text = Label(item, "", 12, C.text)
         item.text:SetPoint("LEFT", 10, 0)
-        item.arrow = item:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+        item.arrow = Label(item, ">", 12, C.accent)
         item.arrow:SetPoint("RIGHT", -8, 0)
-        item.arrow:SetText(">")
 
         -- botón de prueba dentro de la fila: no selecciona el elemento
-        local play = CreateFrame("Button", nil, item)
-        play:SetSize(PLAY_W, ITEM_H - 4)
+        local play = CreateButton(item, L["Play"], PLAY_W, ITEM_H - 6)
         play:SetPoint("RIGHT", -2, 0)
-        local pbg = play:CreateTexture(nil, "BACKGROUND")
-        pbg:SetAllPoints()
-        pbg:SetColorTexture(0.2, 0.5, 0.9, 0.55)
-        local phl = play:CreateTexture(nil, "HIGHLIGHT")
-        phl:SetAllPoints()
-        phl:SetColorTexture(1, 1, 1, 0.25)
-        local ptxt = play:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        ptxt:SetPoint("CENTER")
-        ptxt:SetText("Probar")
+        play.label:SetFont(STANDARD_TEXT_FONT, 10, "")
+        play.fill:SetColorTexture(rgb(C.select))
+        play:SetScript("OnLeave", function(self) self.fill:SetColorTexture(rgb(C.select)) end)
         play:SetScript("OnClick", function()
             if item.entry and menu.preview then menu.preview(item.entry.value) end
         end)
         item.play = play
         item.text:SetPoint("RIGHT", play, "LEFT", -4, 0)
-        item.text:SetJustifyH("LEFT")
 
         item:SetScript("OnClick", function(self)
             local e = self.entry
@@ -239,12 +303,10 @@ local function GetMenu()
     menu.scroll:SetWidth(10)
     menu.scroll:SetValueStep(1)
     if menu.scroll.SetObeyStepOnDrag then menu.scroll:SetObeyStepOnDrag(true) end
-    local track = menu.scroll:CreateTexture(nil, "BACKGROUND")
-    track:SetAllPoints()
-    track:SetColorTexture(1, 1, 1, 0.08)
+    Skin(menu.scroll, C.bgDark, true)
     menu.scroll:SetThumbTexture("Interface/Buttons/WHITE8x8")
     menu.scroll:GetThumbTexture():SetSize(10, 28)
-    menu.scroll:GetThumbTexture():SetVertexColor(0.6, 0.6, 0.65, 1)
+    menu.scroll:GetThumbTexture():SetVertexColor(rgb(C.muted))
     menu.scroll:SetScript("OnValueChanged", function(self, v)
         if self.loading then return end
         menu.offset = math.floor(v + 0.5)
@@ -291,8 +353,43 @@ local function OpenMenu(owner, options, current, onSelect)
 end
 
 ---------------------------------------------------------------------------
--- Constructor de controles
+-- Constructor de controles (cada página usa uno)
 ---------------------------------------------------------------------------
+
+local ROW = 26
+local ROW0 = -70
+local COLX = { 16, 306 }
+local MAXROWS = 15
+local builders = {}
+
+-- Casilla con estilo; devuelve la función que la sincroniza con el valor guardado.
+local function CreateCheck(panel, x, y, text, get, set)
+    local box = CreateFrame("Button", nil, panel)
+    box:SetSize(18, 18)
+    box:SetPoint("TOPLEFT", x, y - 2)
+    Skin(box, C.bgDarker, true)
+    local mark = box:CreateTexture(nil, "ARTWORK")
+    mark:SetPoint("TOPLEFT", 4, -4)
+    mark:SetPoint("BOTTOMRIGHT", -4, 4)
+    mark:SetColorTexture(rgb(C.accent))
+    local label = Label(panel, text, 12, C.text)
+    label:SetPoint("LEFT", box, "RIGHT", 8, 0)
+    box:SetHitRectInsets(0, -(label:GetStringWidth() + 10), 0, 0)
+
+    local checked = false
+    local function paint() mark:SetShown(checked) end
+    box:SetScript("OnClick", function()
+        checked = not checked
+        paint()
+        set(checked)
+    end)
+    box:SetScript("OnEnter", function() label:SetTextColor(rgb(C.accent)) end)
+    box:SetScript("OnLeave", function() label:SetTextColor(rgb(C.text)) end)
+    return function()
+        checked = get() and true or false
+        paint()
+    end
+end
 
 local function NewBuilder(panel)
     local b = { panel = panel, col = 1, row = 0, refreshers = {} }
@@ -304,7 +401,7 @@ local function NewBuilder(panel)
             self.row = 0
         end
         local x = COLX[self.col] or COLX[#COLX]
-        local y = -56 - self.row * ROW
+        local y = ROW0 - self.row * ROW
         self.row = self.row + 1
         return x, y
     end
@@ -320,47 +417,39 @@ local function NewBuilder(panel)
 
     function b:Header(text)
         local x, y = self:Next()
-        local h = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+        local h = Label(panel, Upper(text), 12, C.accent)
         h:SetPoint("TOPLEFT", x, y - 6)
-        h:SetText(text)
+        local line = panel:CreateTexture(nil, "ARTWORK")
+        line:SetPoint("TOPLEFT", x, y - 22)
+        line:SetSize(262, 1)
+        line:SetColorTexture(rgb(C.light, 0.45))
     end
 
     function b:Check(text, get, set)
         local x, y = self:Next()
-        local cb = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-        cb:SetPoint("TOPLEFT", x, y + 4)
-        local label = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-        label:SetPoint("LEFT", cb, "RIGHT", 2, 0)
-        label:SetText(text)
-        cb:SetScript("OnClick", function(self) set(self:GetChecked() and true or false) end)
-        self.refreshers[#self.refreshers + 1] = function() cb:SetChecked(get()) end
+        self.refreshers[#self.refreshers + 1] = CreateCheck(panel, x, y, text, get, set)
     end
 
     function b:Slider(text, min, max, step, get, set)
         local x, y = self:Next()
-        local label = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+        local label = Label(panel, text, 12, C.text)
         label:SetPoint("TOPLEFT", x, y - 4)
-        label:SetWidth(130)
-        label:SetJustifyH("LEFT")
-        label:SetText(text)
+        label:SetWidth(118)
 
         local s = CreateFrame("Slider", nil, panel)
-        s:SetPoint("TOPLEFT", x + 135, y - 6)
-        s:SetSize(120, 16)
+        s:SetPoint("TOPLEFT", x + 122, y - 7)
+        s:SetSize(100, 10)
         s:SetOrientation("HORIZONTAL")
         s:EnableMouse(true)
-        local track = s:CreateTexture(nil, "BACKGROUND")
-        track:SetPoint("LEFT")
-        track:SetPoint("RIGHT")
-        track:SetHeight(4)
-        track:SetColorTexture(0.35, 0.35, 0.35, 1)
-        s:SetThumbTexture("Interface\\Buttons\\UI-SliderBar-Button-Horizontal")
-        s:GetThumbTexture():SetSize(14, 22)
+        Skin(s, C.bgDarker, true)
+        s:SetThumbTexture("Interface/Buttons/WHITE8x8")
+        s:GetThumbTexture():SetSize(8, 18)
+        s:GetThumbTexture():SetVertexColor(rgb(C.muted))
         s:SetMinMaxValues(min, max)
         s:SetValueStep(step)
         if s.SetObeyStepOnDrag then s:SetObeyStepOnDrag(true) end
 
-        local value = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+        local value = Label(panel, "", 11, C.accent)
         value:SetPoint("LEFT", s, "RIGHT", 8, 0)
 
         local fmt = step < 1 and "%.2f" or "%d"
@@ -378,21 +467,22 @@ local function NewBuilder(panel)
         end
     end
 
+    -- Lista desplegable (ver OpenMenu).
     function b:Cycle(text, options, get, set)
         local x, y = self:Next()
-        local label = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+        local label = Label(panel, text, 12, C.text)
         label:SetPoint("TOPLEFT", x, y - 4)
-        label:SetWidth(130)
-        label:SetJustifyH("LEFT")
-        label:SetText(text)
+        label:SetWidth(118)
 
-        local btn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-        btn:SetPoint("TOPLEFT", x + 135, y)
-        btn:SetSize(140, 22)
+        local btn = CreateButton(panel, "", 140, 22)
+        btn:SetPoint("TOPLEFT", x + 122, y)
+        btn.label:ClearAllPoints()
+        btn.label:SetPoint("LEFT", 8, 0)
+        btn.label:SetPoint("RIGHT", -20, 0)
         local arrow = btn:CreateTexture(nil, "OVERLAY")
         arrow:SetTexture("Interface/Buttons/Arrow-Down-Up")
-        arrow:SetSize(16, 16)
-        arrow:SetPoint("RIGHT", -4, -2)
+        arrow:SetSize(14, 14)
+        arrow:SetPoint("RIGHT", -4, -1)
 
         local function labelOf(value)
             for _, o in ipairs(options) do
@@ -403,28 +493,28 @@ local function NewBuilder(panel)
         btn:SetScript("OnClick", function(self)
             OpenMenu(self, options, get(), function(value)
                 set(value)
-                btn:SetText(labelOf(value))
+                btn.label:SetText(labelOf(value))
             end)
         end)
-        self.refreshers[#self.refreshers + 1] = function() btn:SetText(labelOf(get())) end
+        self.refreshers[#self.refreshers + 1] = function() btn.label:SetText(labelOf(get())) end
     end
 
     -- Muestra de color. withAlpha agrega el control de transparencia.
     function b:Color(text, key, field, withAlpha)
         local x, y = self:Next()
         local btn = CreateFrame("Button", nil, panel)
-        btn:SetPoint("TOPLEFT", x + 4, y)
-        btn:SetSize(22, 22)
-        local edge = btn:CreateTexture(nil, "BACKGROUND")
-        edge:SetAllPoints()
-        edge:SetColorTexture(1, 1, 1, 1)
+        btn:SetSize(22, 18)
+        btn:SetPoint("TOPLEFT", x, y - 2)
+        Skin(btn, C.bgDarker, true)
         local swatch = btn:CreateTexture(nil, "ARTWORK")
         swatch:SetPoint("TOPLEFT", 2, -2)
         swatch:SetPoint("BOTTOMRIGHT", -2, 2)
 
-        local label = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+        local label = Label(panel, text, 12, C.text)
         label:SetPoint("LEFT", btn, "RIGHT", 8, 0)
-        label:SetText(text)
+        btn:SetHitRectInsets(0, -(label:GetStringWidth() + 10), 0, 0)
+        btn:SetScript("OnEnter", function() label:SetTextColor(rgb(C.accent)) end)
+        btn:SetScript("OnLeave", function() label:SetTextColor(rgb(C.text)) end)
 
         local function paint()
             local c = ns.db[key][field]
@@ -441,47 +531,183 @@ local function NewBuilder(panel)
         self.refreshers[#self.refreshers + 1] = paint
     end
 
+    -- Campo de texto de una línea (ocupa dos filas: etiqueta y caja).
+    function b:Input(text, get, set, numeric)
+        local x, y = self:Next()
+        local label = Label(panel, text, 12, C.text)
+        label:SetPoint("TOPLEFT", x, y - 4)
+        local x2, y2 = self:Next()
+        local eb = CreateFrame("EditBox", nil, panel)
+        eb:SetPoint("TOPLEFT", x2, y2)
+        eb:SetSize(262, 22)
+        eb:SetAutoFocus(false)
+        eb:SetMaxLetters(numeric and 10 or 60)
+        if numeric then eb:SetNumeric(true) end
+        eb:SetFont(STANDARD_TEXT_FONT, 12, "")
+        eb:SetTextColor(rgb(C.text))
+        eb:SetTextInsets(8, 8, 0, 0)
+        Skin(eb, C.bgDarker, true)
+        eb:SetScript("OnTextChanged", function(self, userInput)
+            if userInput then set(self:GetText()) end
+        end)
+        eb:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+        eb:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+        self.refreshers[#self.refreshers + 1] = function()
+            if not eb:HasFocus() then eb:SetText(tostring(get() or "")) end
+        end
+    end
+
+    -- Texto informativo de varias líneas; textFn devuelve el texto (se actualiza al refrescar).
+    function b:Info(textFn, rows)
+        local x, y = self:Next()
+        for _ = 2, (rows or 1) do self:Next() end
+        local fs = Label(panel, "", 11, C.muted)
+        fs:SetPoint("TOPLEFT", x, y - 4)
+        fs:SetWidth(262)
+        fs:SetSpacing(3)
+        fs:SetJustifyV("TOP")
+        self.refreshers[#self.refreshers + 1] = function() fs:SetText(textFn()) end
+    end
+
+    -- Ícono (por ejemplo de un hechizo) con un texto a su derecha.
+    -- texFn devuelve textura, spellID y si el hechizo está conocido.
+    function b:IconInfo(textFn, texFn, rows)
+        local x, y = self:Next()
+        for _ = 2, (rows or 2) do self:Next() end
+
+        local box = CreateFrame("Frame", nil, panel)
+        box:SetSize(40, 40)
+        box:SetPoint("TOPLEFT", x, y - 2)
+        Skin(box, C.bgDarker, true)
+        box:EnableMouse(true)
+        local icon = box:CreateTexture(nil, "ARTWORK")
+        icon:SetPoint("TOPLEFT", 2, -2)
+        icon:SetPoint("BOTTOMRIGHT", -2, 2)
+        icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+        local fs = Label(panel, "", 11, C.muted)
+        fs:SetPoint("TOPLEFT", box, "TOPRIGHT", 10, -2)
+        fs:SetWidth(212)
+        fs:SetSpacing(3)
+        fs:SetJustifyV("TOP")
+
+        local spellID
+        box:SetScript("OnEnter", function(self)
+            if not spellID then return end
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            local ok = pcall(GameTooltip.SetSpellByID, GameTooltip, spellID)
+            if ok then GameTooltip:Show() end
+        end)
+        box:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+        self.refreshers[#self.refreshers + 1] = function()
+            local tex, id, known = texFn()
+            spellID = id
+            icon:SetTexture(tex or "Interface/Icons/INV_Misc_QuestionMark")
+            -- sin conocer el hechizo, o sin ninguno, el ícono se ve apagado
+            icon:SetDesaturated(not tex or known == false)
+            icon:SetAlpha((not tex or known == false) and 0.6 or 1)
+            fs:SetText(textFn())
+        end
+    end
+
+    -- Captura de una tecla (con modificadores y botones extra del mouse).
+    local MODIFIER_KEYS = {
+        LSHIFT = true, RSHIFT = true, LCTRL = true, RCTRL = true,
+        LALT = true, RALT = true, LMETA = true, RMETA = true,
+    }
+    local MOUSE_KEYS = { MiddleButton = "BUTTON3", Button4 = "BUTTON4", Button5 = "BUTTON5" }
+
+    function b:KeyBind(text, get, set)
+        local x, y = self:Next()
+        local label = Label(panel, text, 12, C.text)
+        label:SetPoint("TOPLEFT", x, y - 4)
+        label:SetWidth(118)
+
+        local btn = CreateButton(panel, "", 140, 22)
+        btn:SetPoint("TOPLEFT", x + 122, y)
+        local clear = CreateButton(panel, "X", 22, 22)
+        clear:SetPoint("LEFT", btn, "RIGHT", 4, 0)
+
+        local capturing = false
+        local function paint()
+            if capturing then
+                btn.label:SetText(L["Press a key..."])
+                btn.label:SetTextColor(rgb(C.accent))
+            else
+                local key = get()
+                btn.label:SetText((key and key ~= "") and key or L["Unassigned"])
+                btn.label:SetTextColor(rgb(C.text))
+            end
+        end
+        local function finish(key)
+            capturing = false
+            btn:EnableKeyboard(false)
+            if key then set(key) end
+            paint()
+        end
+
+        btn:SetScript("OnClick", function(self)
+            capturing = true
+            self:EnableKeyboard(true)
+            paint()
+        end)
+        btn:SetScript("OnKeyDown", function(_, key)
+            if not capturing then return end
+            if key == "ESCAPE" then finish(nil) return end
+            if MODIFIER_KEYS[key] then return end
+            local prefix = ""
+            if IsAltKeyDown() then prefix = prefix .. "ALT-" end
+            if IsControlKeyDown() then prefix = prefix .. "CTRL-" end
+            if IsShiftKeyDown() then prefix = prefix .. "SHIFT-" end
+            finish(prefix .. key)
+        end)
+        btn:HookScript("OnMouseDown", function(_, button)
+            if not capturing then return end
+            if MOUSE_KEYS[button] then
+                finish(MOUSE_KEYS[button])
+            else
+                finish(nil)
+            end
+        end)
+        clear:SetScript("OnClick", function() finish("") end)
+        panel:HookScript("OnHide", function() if capturing then finish(nil) end end)
+        self.refreshers[#self.refreshers + 1] = paint
+    end
+
+    -- Caja de texto para códigos largos (exportar / importar). Devuelve la caja.
+    function b:Code(text)
+        local x, y = self:Next()
+        local label = Label(panel, text, 12, C.text)
+        label:SetPoint("TOPLEFT", x, y - 4)
+        local x2, y2 = self:Next()
+        local eb = CreateFrame("EditBox", nil, panel)
+        eb:SetPoint("TOPLEFT", x2, y2)
+        eb:SetSize(262, 22)
+        eb:SetAutoFocus(false)
+        eb:SetMaxLetters(0)
+        eb:SetFont(STANDARD_TEXT_FONT, 10, "")
+        eb:SetTextColor(rgb(C.muted))
+        eb:SetTextInsets(8, 8, 0, 0)
+        Skin(eb, C.bgDarker, true)
+        eb:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+        eb:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
+        return eb
+    end
+
     function b:Button(text, onClick)
         local x, y = self:Next()
-        local btn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-        btn:SetPoint("TOPLEFT", x + 4, y)
-        btn:SetSize(160, 22)
-        btn:SetText(text)
-        btn:SetScript("OnClick", onClick)
+        local btn = CreateButton(panel, text, 160, 22, onClick)
+        btn:SetPoint("TOPLEFT", x, y)
     end
 
     builders[#builders + 1] = b
     return b
 end
 
-function ns.RefreshOptions()
-    for _, b in ipairs(builders) do b:Refresh() end
-end
-
 ---------------------------------------------------------------------------
--- Paneles
+-- Enlaces con la configuración
 ---------------------------------------------------------------------------
-
-local function MakePanel(name, parentName, description)
-    local panel = CreateFrame("Frame")
-    panel.name = name
-    panel.parent = parentName
-    if parentName then
-        local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-        title:SetPoint("TOPLEFT", 16, -16)
-        title:SetText("ModiTools - " .. name)
-        if description then
-            local desc = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-            desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -4)
-            desc:SetTextColor(0.7, 0.7, 0.7)
-            desc:SetText(description)
-        end
-    end
-    local b = NewBuilder(panel)
-    panel:SetScript("OnShow", function() b:Refresh() end)
-    panel:SetScript("OnHide", function() if menu then menu:Hide() end end)
-    return panel, b
-end
 
 -- Devuelve getter y setter de db[key][field]; el setter reaplica la herramienta.
 local function Bind(key, field)
@@ -501,154 +727,527 @@ local function SoundBind(field)
         end
 end
 
--- Bloque común al inicio de cada subpanel: activar y vista previa.
+-- Bloque común al inicio de cada página de herramienta.
 local function GeneralSection(b, key)
-    b:Header("General")
-    b:Check("Activar", Bind(key, "enabled"))
-    b:Check("Vista previa / desbloquear para mover", Bind(key, "unlocked"))
+    b:Header(L["General"])
+    b:Check(L["Enable"], Bind(key, "enabled"))
+    b:Check(L["Preview / unlock to move"], Bind(key, "unlocked"))
+end
+
+---------------------------------------------------------------------------
+-- Ventana
+---------------------------------------------------------------------------
+
+ns.globalDefaults.window = { point = "CENTER", x = 0, y = 0 }
+
+local win
+local pages = {}      -- [key] = { frame, nav, module }
+local pageOrder = {}
+
+local function AddonVersion()
+    local fn = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
+    local ok, v = pcall(fn, "ModiTools", "Version")
+    return (ok and v) or "0.7"
+end
+
+local function RefreshNav()
+    for _, key in ipairs(pageOrder) do
+        local p = pages[key]
+        if p.module and p.nav.dot then
+            local on = ns.db[p.module] and ns.db[p.module].enabled
+            p.nav.dot:SetColorTexture(rgb(on and C.accent or C.light, on and 1 or 0.4))
+        end
+    end
+end
+
+function ns.RefreshOptions()
+    for _, b in ipairs(builders) do b:Refresh() end
+    if win then RefreshNav() end
+end
+
+local function SelectPage(key)
+    for k, p in pairs(pages) do
+        local selected = (k == key)
+        p.frame:SetShown(selected)
+        p.nav.selectedBG:SetShown(selected)
+        p.nav.bar:SetShown(selected)
+        p.nav.label:SetTextColor(rgb(selected and C.accent or C.text))
+    end
+    win.current = key
+    ns.RefreshOptions()
+end
+
+local function AddNav(key, text, index, moduleKey)
+    local nav = CreateFrame("Button", nil, win.sidebar)
+    nav:SetHeight(32)
+    nav:SetPoint("TOPLEFT", 4, -4 - (index - 1) * 34)
+    nav:SetPoint("TOPRIGHT", -4, -4 - (index - 1) * 34)
+    nav.selectedBG = nav:CreateTexture(nil, "BACKGROUND")
+    nav.selectedBG:SetAllPoints()
+    nav.selectedBG:SetColorTexture(rgb(C.select))
+    nav.selectedBG:Hide()
+    nav.hl = nav:CreateTexture(nil, "HIGHLIGHT")
+    nav.hl:SetAllPoints()
+    nav.hl:SetColorTexture(rgb(C.hover, 0.6))
+    nav.bar = nav:CreateTexture(nil, "ARTWORK")
+    nav.bar:SetPoint("TOPLEFT")
+    nav.bar:SetPoint("BOTTOMLEFT")
+    nav.bar:SetWidth(3)
+    nav.bar:SetColorTexture(rgb(C.accent))
+    nav.bar:Hide()
+    nav.label = Label(nav, text, 13, C.text)
+    nav.label:SetPoint("LEFT", 14, 0)
+    if moduleKey then
+        nav.dot = nav:CreateTexture(nil, "ARTWORK")
+        nav.dot:SetSize(8, 8)
+        nav.dot:SetPoint("RIGHT", -10, 0)
+    end
+    nav:SetScript("OnClick", function() SelectPage(key) end)
+    return nav
+end
+
+local function PageHeader(panel, title, desc)
+    local t = Label(panel, title, 18, C.accent)
+    t:SetPoint("TOPLEFT", 16, -14)
+    if desc then
+        local d = Label(panel, desc, 11, C.muted)
+        d:SetPoint("TOPLEFT", 16, -40)
+        d:SetWidth(556)
+    end
+    local line = panel:CreateTexture(nil, "ARTWORK")
+    line:SetPoint("TOPLEFT", 16, -58)
+    line:SetPoint("TOPRIGHT", -16, -58)
+    line:SetHeight(1)
+    line:SetColorTexture(rgb(C.light, 0.5))
+end
+
+-- Crea una página de herramienta: marco + constructor + botón en la barra lateral.
+local function MakePage(key, title, desc, moduleKey)
+    local frame = CreateFrame("Frame", nil, win.content)
+    frame:SetAllPoints()
+    frame:Hide()
+    PageHeader(frame, title, desc)
+    local b = NewBuilder(frame)
+    frame:SetScript("OnShow", function() b:Refresh() end)
+    pageOrder[#pageOrder + 1] = key
+    pages[key] = { frame = frame, nav = AddNav(key, title, #pageOrder, moduleKey), module = moduleKey }
+    return b
+end
+
+local function BuildHome()
+    local frame = CreateFrame("Frame", nil, win.content)
+    frame:SetAllPoints()
+    pageOrder[#pageOrder + 1] = "home"
+    pages.home = { frame = frame, nav = AddNav("home", L["Home"], #pageOrder, nil) }
+
+    local title = Label(frame, "ModiTools", 40, C.accent)
+    title:SetFont(STANDARD_TEXT_FONT, 40, "OUTLINE")
+    title:SetPoint("TOPLEFT", 24, -22)
+
+    local version = Label(frame, string.format(L["Version %s"], AddonVersion()), 14, C.text)
+    version:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 2, -8)
+
+    local art = frame:CreateTexture(nil, "ARTWORK")
+    art:SetTexture("Interface\\AddOns\\ModiTools\\Media\\dwarf")
+    art:SetSize(190, 190)
+    art:SetPoint("TOPRIGHT", -24, -24)
+    local artFrame = CreateFrame("Frame", nil, frame)
+    artFrame:SetPoint("TOPLEFT", art, "TOPLEFT", -2, 2)
+    artFrame:SetPoint("BOTTOMRIGHT", art, "BOTTOMRIGHT", 2, -2)
+    Bevel(artFrame, true)
+
+    local intro = Label(frame,
+        L["Utilities for your interface, each with its own page in the sidebar:"] .. "\n\n"
+        .. "- " .. L["Yards: distance to your target."] .. "\n"
+        .. "- " .. L["Focus cast: your focus' cast bar."] .. "\n"
+        .. "- " .. L["Marked casts: casts of marked mobs."] .. "\n"
+        .. "- " .. L["Threat alert: warning when you lose aggro."] .. "\n"
+        .. "- " .. L["Brez: combat res on a key."] .. "\n"
+        .. "- " .. L["Prepot: time left on the potion you used."] .. "\n\n"
+        .. L["The dot next to each tool shows whether it is enabled."],
+        12, C.text)
+    intro:SetPoint("TOPLEFT", version, "BOTTOMLEFT", 0, -28)
+    intro:SetWidth(330)
+    intro:SetSpacing(2)
+
+    -- ícono del minimapa e idioma
+    local hb = NewBuilder(frame)
+    hb.row = 11
+    hb:Check(L["Show minimap icon"],
+        function() return not ns.global.minimap.hide end,
+        function(v)
+            ns.global.minimap.hide = not v
+            if ns.UpdateMinimap then ns.UpdateMinimap() end
+        end)
+    hb:Cycle("Language / Idioma", {
+        { value = "en", label = "English" },
+        { value = "es", label = "Español (MX)" },
+    }, function() return ns.GetLanguage() end, function(v) ns.ChangeLanguage(v) end)
+    frame:SetScript("OnShow", function() hb:Refresh() end)
+
+    local cmds = Label(frame,
+        L["Commands:"] .. "  /modi   ·   /modi yards|focus|marked|threat|brez|prepot   ·   "
+        .. "/modi unlock|lock " .. L["<tool|all>"] .. "   ·   /modi reset   ·   /modi minimap   ·   /modi lang en|es",
+        10, C.muted)
+    cmds:SetWidth(538)
+    cmds:SetSpacing(2)
+    cmds:SetPoint("BOTTOMLEFT", 24, 16)
+end
+
+local function BuildWindow()
+    win = CreateFrame("Frame", "ModiToolsWindow", UIParent)
+    win:SetSize(780, 560)
+    win:SetFrameStrata("HIGH")
+    win:SetMovable(true)
+    win:SetClampedToScreen(true)
+    win:EnableMouse(true)
+    Skin(win, C.bg, false)
+    win:Hide()
+    local pos = ns.global.window
+    win:SetPoint(pos.point, UIParent, pos.point, pos.x, pos.y)
+    table.insert(UISpecialFrames, "ModiToolsWindow")
+
+    -- barra de título (arrastrable)
+    local bar = CreateFrame("Frame", nil, win)
+    bar:SetHeight(36)
+    bar:SetPoint("TOPLEFT")
+    bar:SetPoint("TOPRIGHT")
+    bar:EnableMouse(true)
+    bar:RegisterForDrag("LeftButton")
+    bar:SetScript("OnDragStart", function() win:StartMoving() end)
+    bar:SetScript("OnDragStop", function()
+        win:StopMovingOrSizing()
+        local point, _, _, x, y = win:GetPoint()
+        pos.point, pos.x, pos.y = point, x, y
+    end)
+    local name = Label(bar, "ModiTools", 16, C.accent)
+    name:SetPoint("LEFT", 14, 0)
+    local ver = Label(bar, "v" .. AddonVersion(), 11, C.muted)
+    ver:SetPoint("LEFT", name, "RIGHT", 8, -2)
+    local close = CreateButton(bar, "X", 24, 20, function() win:Hide() end)
+    close:SetPoint("RIGHT", -8, 0)
+
+    win.sidebar = CreateFrame("Frame", nil, win)
+    win.sidebar:SetPoint("TOPLEFT", 8, -44)
+    win.sidebar:SetPoint("BOTTOMLEFT", 8, 8)
+    win.sidebar:SetWidth(170)
+    Skin(win.sidebar, C.bgDark, true)
+
+    win.content = CreateFrame("Frame", nil, win)
+    win.content:SetPoint("TOPLEFT", win.sidebar, "TOPRIGHT", 8, 0)
+    win.content:SetPoint("BOTTOMRIGHT", -8, 8)
+    Skin(win.content, C.bgDark, true)
+end
+
+function ns.OpenWindow(page)
+    if not win then return end
+    win:Show()
+    SelectPage(page or win.current or "home")
+end
+
+function ns.ToggleWindow()
+    if not win then return end
+    if win:IsShown() then win:Hide() else ns.OpenWindow() end
 end
 
 function ns.CreateOptions()
-    -- Portada
-    local main = MakePanel("ModiTools")
-    local bigTitle = main:CreateFontString(nil, "ARTWORK")
-    bigTitle:SetFont(STANDARD_TEXT_FONT, 40, "OUTLINE")
-    bigTitle:SetPoint("TOPLEFT", 16, -16)
-    bigTitle:SetTextColor(1, 0.82, 0)
-    bigTitle:SetText("ModiTools")
-
-    local version = main:CreateFontString(nil, "ARTWORK", "GameFontHighlightLarge")
-    version:SetPoint("TOPLEFT", bigTitle, "BOTTOMLEFT", 2, -6)
-    version:SetText("Versión 0.5")
-
-    local art = main:CreateTexture(nil, "ARTWORK")
-    art:SetTexture("Interface\\AddOns\\ModiTools\\Media\\dwarf")
-    art:SetSize(200, 200)
-    art:SetPoint("TOPRIGHT", -16, -16)
-
-    local intro = main:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    intro:SetPoint("TOPLEFT", version, "BOTTOMLEFT", 0, -24)
-    intro:SetWidth(380)
-    intro:SetJustifyH("LEFT")
-    intro:SetText("Cada herramienta se configura en su propia subcategoría, a la izquierda:\n\n"
-        .. "- Yardas: distancia al target.\n"
-        .. "- Cast del focus: barra de casteo del focus.\n"
-        .. "- Casteos marcados: casteos de los mobs con marca (calavera, estrella...).\n"
-        .. "- Prepot: duración de la poción usada.\n\n"
-        .. "En cada una puedes activarla, ver la vista previa para moverla y personalizarla.")
-    local help = main:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-    help:SetPoint("BOTTOMLEFT", 16, 16)
-    help:SetText("Comandos: /modi yards|focus|marked|prepot, /modi unlock|lock <...|all>, /modi reset, /modi prepot test|add <id>")
+    ns.LocalizeSounds()
+    BuildWindow()
+    BuildHome()
 
     -- Yardas
-    local yards, yb = MakePanel("Yardas", "ModiTools", "Muestra la distancia en yardas hasta tu target.")
+    local yb = MakePage("yards", L["Yards"], L["Shows the distance in yards to your target."], "yards")
     GeneralSection(yb, "yards")
-    yb:Header("Apariencia")
-    yb:Slider("Tamaño del texto", 10, 72, 1, Bind("yards", "fontSize"))
+    yb:Header(L["Appearance"])
+    yb:Slider(L["Text size"], 10, 72, 1, Bind("yards", "fontSize"))
+    yb:NewColumn()
+    yb:Header(L["How to read it"])
+    yb:Info(function()
+        local g = "|cffc4b550"
+        return L["WoW does not give the exact distance to an enemy: the addon estimates it."] .. "\n\n"
+            .. g .. "15 - 20 yd|r  " .. L["more than 15 and up to 20."] .. "\n"
+            .. g .. "< 5 yd|r  " .. L["less than 5."] .. "\n"
+            .. g .. "> 80 yd|r  " .. L["more than 80."] .. "\n"
+            .. g .. "12.4 yd|r  " .. L["exact (party members only)."]
+    end, 8)
 
     -- Barra de casteo del focus
-    local focus, fb = MakePanel("Cast del focus", "ModiTools", "Barra con el casteo de tu focus, con colores y sonidos personalizables.")
+    local textureLabels = { Plano = L["Flat"], Habilidades = L["Skills"] }
     local textureOptions = {}
     for _, n in ipairs(ns.FocusTextures) do
-        textureOptions[#textureOptions + 1] = { value = n, label = n }
+        textureOptions[#textureOptions + 1] = { value = n, label = textureLabels[n] or n }
     end
     ns.FocusSounds.preview = ns.PlayFocusSound
+
+    local fb = MakePage("focus", L["Focus cast"],
+        L["Bar with your focus' cast, with customizable colors and sounds."], "focus")
     GeneralSection(fb, "focus")
-    fb:Header("Apariencia")
-    fb:Slider("Ancho", 100, 600, 5, Bind("focus", "width"))
-    fb:Slider("Alto", 10, 60, 1, Bind("focus", "height"))
-    fb:Slider("Opacidad", 0.2, 1, 0.05, Bind("focus", "alpha"))
-    fb:Slider("Tamaño de fuente", 8, 24, 1, Bind("focus", "fontSize"))
-    fb:Cycle("Textura", textureOptions, Bind("focus", "texture"))
-    fb:Header("Sonidos")
-    fb:Check("Sonido al iniciar casteo", Bind("focus", "soundStart"))
-    fb:Cycle("Sonido de inicio", ns.FocusSounds, SoundBind("soundStartKey"))
-    fb:Check("Solo si es interrumpible", Bind("focus", "soundOnlyInterruptible"))
-    fb:Check("Sonido al ser interrumpido", Bind("focus", "soundInterrupt"))
-    fb:Cycle("Sonido de interrupción", ns.FocusSounds, SoundBind("soundInterruptKey"))
+    fb:Header(L["Appearance"])
+    fb:Slider(L["Width"], 100, 600, 5, Bind("focus", "width"))
+    fb:Slider(L["Height"], 10, 60, 1, Bind("focus", "height"))
+    fb:Slider(L["Opacity"], 0.2, 1, 0.05, Bind("focus", "alpha"))
+    fb:Slider(L["Font size"], 8, 24, 1, Bind("focus", "fontSize"))
+    fb:Cycle(L["Texture"], textureOptions, Bind("focus", "texture"))
+    fb:Header(L["Sounds"])
+    fb:Check(L["Sound when a cast starts"], Bind("focus", "soundStart"))
+    fb:Cycle(L["Start sound"], ns.FocusSounds, SoundBind("soundStartKey"))
+    fb:Check(L["Only if it can be interrupted"], Bind("focus", "soundOnlyInterruptible"))
+    fb:Check(L["Sound when interrupted"], Bind("focus", "soundInterrupt"))
+    fb:Cycle(L["Interrupt sound"], ns.FocusSounds, SoundBind("soundInterruptKey"))
     fb:NewColumn()
-    fb:Header("Elementos")
-    fb:Check("Mostrar ícono", Bind("focus", "showIcon"))
-    fb:Check("Mostrar nombre del hechizo", Bind("focus", "showName"))
-    fb:Check("Mostrar tiempo", Bind("focus", "showTime"))
-    fb:Check("Mostrar borde", Bind("focus", "showBorder"))
-    fb:Check("Chispa (brillo en el avance)", Bind("focus", "showSpark"))
-    fb:Check("Resplandor alrededor", Bind("focus", "showGlow"))
-    fb:Header("Colores")
-    fb:Color("Casteo normal", "focus", "colorCast")
-    fb:Color("Canalizado (channel)", "focus", "colorChannel")
-    fb:Color("No interrumpible", "focus", "colorLocked")
-    fb:Color("Interrumpido", "focus", "colorFailed")
-    fb:Color("Fondo", "focus", "colorBG", true)
-    fb:Color("Borde", "focus", "colorBorder", true)
-    fb:Button("Restaurar valores", function() ns.ResetModule("focus") end)
+    fb:Header(L["Elements"])
+    fb:Check(L["Show icon"], Bind("focus", "showIcon"))
+    fb:Check(L["Show spell name"], Bind("focus", "showName"))
+    fb:Check(L["Show time"], Bind("focus", "showTime"))
+    fb:Check(L["Show border"], Bind("focus", "showBorder"))
+    fb:Check(L["Spark (glow on the progress edge)"], Bind("focus", "showSpark"))
+    fb:Check(L["Glow around the bar"], Bind("focus", "showGlow"))
+    fb:Header(L["Colors"])
+    fb:Color(L["Normal cast"], "focus", "colorCast")
+    fb:Color(L["Channel"], "focus", "colorChannel")
+    fb:Color(L["Uninterruptible"], "focus", "colorLocked")
+    fb:Color(L["Interrupted"], "focus", "colorFailed")
+    fb:Color(L["Background"], "focus", "colorBG", true)
+    fb:Color(L["Border"], "focus", "colorBorder", true)
+    fb:Button(L["Restore defaults"], function() ns.ResetModule("focus") end)
 
     -- Casteos de mobs marcados
-    local marked, mb = MakePanel("Casteos marcados", "ModiTools", "Barras con el casteo de los mobs marcados e indicación de si fueron interrumpidos.")
+    local mb = MakePage("marked", L["Marked casts"],
+        L["Bars with the casts of marked mobs, showing whether they were interrupted."], "marked")
     GeneralSection(mb, "marked")
-    mb:Header("Apariencia")
-    mb:Slider("Ancho", 100, 500, 5, Bind("marked", "width"))
-    mb:Slider("Alto", 10, 50, 1, Bind("marked", "height"))
-    mb:Slider("Separación", 0, 20, 1, Bind("marked", "spacing"))
-    mb:Slider("Máx. de barras", 1, 8, 1, Bind("marked", "maxBars"))
-    mb:Slider("Opacidad", 0.2, 1, 0.05, Bind("marked", "alpha"))
-    mb:Slider("Tamaño de fuente", 8, 24, 1, Bind("marked", "fontSize"))
-    mb:Cycle("Textura", textureOptions, Bind("marked", "texture"))
-    mb:Check("Crecer hacia arriba", Bind("marked", "growUp"))
-    mb:Button("Restaurar valores", function() ns.ResetModule("marked") end)
+    mb:Header(L["Appearance"])
+    mb:Slider(L["Width"], 100, 500, 5, Bind("marked", "width"))
+    mb:Slider(L["Height"], 10, 50, 1, Bind("marked", "height"))
+    mb:Slider(L["Spacing"], 0, 20, 1, Bind("marked", "spacing"))
+    mb:Slider(L["Max bars"], 1, 8, 1, Bind("marked", "maxBars"))
+    mb:Slider(L["Opacity"], 0.2, 1, 0.05, Bind("marked", "alpha"))
+    mb:Slider(L["Font size"], 8, 24, 1, Bind("marked", "fontSize"))
+    mb:Cycle(L["Texture"], textureOptions, Bind("marked", "texture"))
+    mb:Check(L["Grow upward"], Bind("marked", "growUp"))
+    mb:Button(L["Restore defaults"], function() ns.ResetModule("marked") end)
     mb:NewColumn()
-    mb:Header("Resultado")
-    mb:Check("Mostrar resultado en la barra", Bind("marked", "showResult"))
-    mb:Check("Avisar en el chat", Bind("marked", "chatMessage"))
-    mb:Slider("Duración resultado (s)", 0.5, 5, 0.5, Bind("marked", "resultSeconds"))
-    mb:Check("Mostrar tiempo", Bind("marked", "showTime"))
-    mb:Check("Mostrar borde", Bind("marked", "showBorder"))
-    mb:Header("Colores")
-    mb:Color("Casteo normal", "marked", "colorCast")
-    mb:Color("Canalizado (channel)", "marked", "colorChannel")
-    mb:Color("No interrumpible", "marked", "colorLocked")
-    mb:Color("Interrumpido", "marked", "colorInterrupted")
-    mb:Color("No interrumpido", "marked", "colorNotInterrupted")
-    mb:Color("Fondo", "marked", "colorBG", true)
-    mb:Color("Borde", "marked", "colorBorder", true)
+    mb:Header(L["Result"])
+    mb:Check(L["Show the result on the bar"], Bind("marked", "showResult"))
+    mb:Check(L["Announce in chat"], Bind("marked", "chatMessage"))
+    mb:Slider(L["Result duration (s)"], 0.5, 5, 0.5, Bind("marked", "resultSeconds"))
+    mb:Check(L["Show time"], Bind("marked", "showTime"))
+    mb:Check(L["Show border"], Bind("marked", "showBorder"))
+    mb:Header(L["Colors"])
+    mb:Color(L["Normal cast"], "marked", "colorCast")
+    mb:Color(L["Channel"], "marked", "colorChannel")
+    mb:Color(L["Uninterruptible"], "marked", "colorLocked")
+    mb:Color(L["Interrupted"], "marked", "colorInterrupted")
+    mb:Color(L["Not interrupted"], "marked", "colorNotInterrupted")
+    mb:Color(L["Background"], "marked", "colorBG", true)
+    mb:Color(L["Border"], "marked", "colorBorder", true)
+
+    -- Alerta de threat
+    local threatSounds = {}
+    for i, e in ipairs(ns.FocusSounds) do threatSounds[i] = e end
+    threatSounds.preview = function(v) ns.PlaySoundKey(v, ns.db.threat.soundCustom) end
+    local fontOptions = {
+        { value = "default", label = L["Default"] },
+        { value = "frizqt", label = "Friz Quadrata" },
+        { value = "arialn", label = "Arial Narrow" },
+        { value = "morpheus", label = "Morpheus" },
+    }
+    local outlineOptions = {
+        { value = "NONE", label = L["No outline"] },
+        { value = "OUTLINE", label = L["Outline"] },
+        { value = "THICKOUTLINE", label = L["Thick outline"] },
+    }
+
+    local tb = MakePage("threat", L["Threat alert"],
+        L["Shows text when you are losing aggro on a mob."], "threat")
+    GeneralSection(tb, "threat")
+    tb:Header(L["Text"])
+    tb:Input(L["Alert text"],
+        function() return ns.ThreatText() end,
+        function(v)
+            local c = ns.db.threat
+            c.text = (v == L["LOSING AGGRO!"]) and "" or v
+            ns.modules.threat.Apply()
+        end)
+    tb:Header(L["Appearance"])
+    tb:Slider(L["Size"], 12, 96, 1, Bind("threat", "fontSize"))
+    tb:Slider(L["Opacity"], 0.2, 1, 0.05, Bind("threat", "alpha"))
+    tb:Cycle(L["Font"], fontOptions, Bind("threat", "font"))
+    tb:Cycle(L["Outline"], outlineOptions, Bind("threat", "outline"))
+    tb:Button(L["Restore defaults"], function() ns.ResetModule("threat") end)
+    tb:NewColumn()
+    tb:Header(L["Behavior"])
+    tb:Check(L["Only if I am the tank"], Bind("threat", "onlyTank"))
+    tb:Check(L["Flash"], Bind("threat", "flash"))
+    tb:Check(L["Show mob name"], Bind("threat", "showMob"))
+    tb:Slider(L["Duration (s)"], 1, 10, 0.5, Bind("threat", "holdSeconds"))
+    tb:Header(L["Sound"])
+    tb:Check(L["Sound when losing aggro"], Bind("threat", "sound"))
+    tb:Cycle(L["Sound"], threatSounds, Bind("threat", "soundKey"))
+    tb:Header(L["Colors"])
+    tb:Color(L["Text"], "threat", "colorText")
+    tb:Check(L["Show background"], Bind("threat", "showBG"))
+    tb:Color(L["Background"], "threat", "colorBG", true)
+    tb:Button(L["Test alert"], function() ns.modules.threat.Slash("test") end)
+
+    -- Brez en una tecla
+    local bb = MakePage("brez", L["Brez on a key"],
+        L["Your key casts your class's combat res when you hover over a dead ally."], "brez")
+    bb:Header(L["General"])
+    bb:Check(L["Enable"], Bind("brez", "enabled"))
+    bb:Check(L["Combat only"], Bind("brez", "onlyCombat"))
+    bb:Header(L["Key"])
+    bb:KeyBind(L["Key"], Bind("brez", "key"))
+    bb:Info(function()
+        return L["It can be a key you already use: it only becomes brez while your mouse is over a dead ally. The rest of the time it does what it always does."]
+    end, 5)
+    bb:NewColumn()
+    bb:Header(L["Status"])
+    bb:IconInfo(function() return ns.modules.brez.StatusText() end,
+        function() return ns.modules.brez.SpellIcon() end, 5)
+    bb:Header(L["Advanced"])
+    bb:Input(L["Spell ID (optional)"], Bind("brez", "customSpell"), true)
+    bb:Info(function()
+        return L["Only if your brez is not detected: enter the numeric spell ID (the number in its wowhead.com page, e.g. /spell=20484)."]
+            .. "\n\n" .. L["Changes apply after combat."]
+    end, 5)
+    bb:Button(L["Restore defaults"], function() ns.ResetModule("brez") end)
 
     -- Prepot
-    local prepot, pb = MakePanel("Prepot", "ModiTools", "Ícono con el tiempo restante de la poción que usaste.")
     local posOptions = {
-        { value = "CENTER", label = "Centro" },
-        { value = "BOTTOM", label = "Abajo" },
-        { value = "TOP", label = "Arriba" },
+        { value = "CENTER", label = L["Center"] },
+        { value = "BOTTOM", label = L["Below"] },
+        { value = "TOP", label = L["Above"] },
     }
+    local pb = MakePage("prepot", L["Prepot"], L["Icon with the time left on the potion you used."], "prepot")
     GeneralSection(pb, "prepot")
-    pb:Header("Apariencia")
-    pb:Slider("Tamaño del ícono", 24, 128, 2, Bind("prepot", "iconSize"))
-    pb:Slider("Opacidad", 0.2, 1, 0.05, Bind("prepot", "alpha"))
-    pb:Slider("Tamaño de fuente", 8, 40, 1, Bind("prepot", "fontSize"))
-    pb:Slider("Avisar al quedar (s)", 0, 30, 1, Bind("prepot", "warnAt"))
-    pb:Cycle("Posición del tiempo", posOptions, Bind("prepot", "textPos"))
-    pb:Button("Probar (30 s)", function() ns.modules.prepot.Slash("test") end)
-    pb:Button("Restaurar valores", function() ns.ResetModule("prepot") end)
+    pb:Header(L["Appearance"])
+    pb:Slider(L["Icon size"], 24, 128, 2, Bind("prepot", "iconSize"))
+    pb:Slider(L["Opacity"], 0.2, 1, 0.05, Bind("prepot", "alpha"))
+    pb:Slider(L["Font size"], 8, 40, 1, Bind("prepot", "fontSize"))
+    pb:Slider(L["Warn at (s)"], 0, 30, 1, Bind("prepot", "warnAt"))
+    pb:Cycle(L["Time position"], posOptions, Bind("prepot", "textPos"))
+    pb:Button(L["Test (30 s)"], function() ns.modules.prepot.Slash("test") end)
+    pb:Button(L["Restore defaults"], function() ns.ResetModule("prepot") end)
     pb:NewColumn()
-    pb:Header("Elementos")
-    pb:Check("Mostrar tiempo", Bind("prepot", "showText"))
-    pb:Check("Remolino de cooldown", Bind("prepot", "showSwirl"))
-    pb:Check("Mostrar borde", Bind("prepot", "showBorder"))
-    pb:Header("Colores")
-    pb:Color("Texto", "prepot", "colorText")
-    pb:Color("Texto en aviso", "prepot", "colorWarn")
-    pb:Color("Borde", "prepot", "colorBorder", true)
+    pb:Header(L["Elements"])
+    pb:Check(L["Show time"], Bind("prepot", "showText"))
+    pb:Check(L["Cooldown swirl"], Bind("prepot", "showSwirl"))
+    pb:Check(L["Show border"], Bind("prepot", "showBorder"))
+    pb:Header(L["Colors"])
+    pb:Color(L["Text"], "prepot", "colorText")
+    pb:Color(L["Warning text"], "prepot", "colorWarn")
+    pb:Color(L["Border"], "prepot", "colorBorder", true)
 
-    local subs = { yards, focus, marked, prepot }
-    if Settings and Settings.RegisterCanvasLayoutCategory then
-        local category = Settings.RegisterCanvasLayoutCategory(main, main.name)
-        Settings.RegisterAddOnCategory(category)
-        for _, sub in ipairs(subs) do
-            Settings.RegisterCanvasLayoutSubcategory(category, sub, sub.name)
+    -- Perfiles
+    local profileOptions = {}
+    local function RefreshProfileOptions()
+        for i = #profileOptions, 1, -1 do profileOptions[i] = nil end
+        for _, profile in ipairs(ns.ListProfiles()) do
+            profileOptions[#profileOptions + 1] = { value = profile, label = profile }
         end
+    end
+
+    local status, nameField, importName = "", "", ""
+    local exportBox, importBox
+
+    local function Report(message)
+        status = message or ""
+        if status ~= "" then print(ns.PREFIX .. status) end
+        ns.RefreshOptions()
+    end
+
+    StaticPopupDialogs["MODITOOLS_CONFIRM"] = {
+        text = "%s",
+        button1 = ACCEPT or "Accept",
+        button2 = CANCEL or "Cancel",
+        OnAccept = function(_, onAccept) if onAccept then onAccept() end end,
+        timeout = 0,
+        whileDead = true,
+        hideOnEscape = true,
+        preferredIndex = 3,
+    }
+
+    local pfb = MakePage("profiles", L["Profiles"], L["Save, switch and share your configuration."], nil)
+    pfb.refreshers[#pfb.refreshers + 1] = RefreshProfileOptions
+    pfb:Header(L["Profile"])
+    pfb:Cycle(L["Active profile"], profileOptions,
+        function() return ns.profileName end,
+        function(v)
+            local ok, err = ns.SetProfile(v)
+            Report(ok and string.format(L["Profile '%s' is now active."], v) or err)
+        end)
+    pfb:Header(L["Manage"])
+    pfb:Input(L["Profile name"], function() return nameField end, function(v) nameField = v end)
+    pfb:Button(L["Create profile"], function()
+        local ok, res = ns.CreateProfile(nameField)
+        if ok then nameField = "" end
+        Report(ok and string.format(L["Profile '%s' created."], res) or res)
+    end)
+    pfb:Button(L["Rename profile"], function()
+        local ok, res = ns.RenameProfile(nameField)
+        if ok then nameField = "" end
+        Report(ok and string.format(L["Profile renamed to '%s'."], res) or res)
+    end)
+    pfb:Button(L["Delete profile"], function()
+        local target = ns.profileName
+        StaticPopup_Show("MODITOOLS_CONFIRM", string.format(L["Delete profile '%s'?"], target), nil, function()
+            local ok, err = ns.DeleteProfile(target)
+            Report(ok and string.format(L["Profile '%s' deleted."], target) or err)
+        end)
+    end)
+    pfb:Button(L["Reset profile"], function()
+        local target = ns.profileName
+        StaticPopup_Show("MODITOOLS_CONFIRM", string.format(L["Reset profile '%s' to defaults?"], target), nil, function()
+            ns.ResetProfile()
+            Report(string.format(L["Profile '%s' reset."], target))
+        end)
+    end)
+    pfb:NewColumn()
+    pfb:Header(L["Share"])
+    pfb:Info(function() return status end, 2)
+    pfb:Button(L["Export current profile"], function()
+        local code = ns.ExportProfile()
+        if not code then return end
+        exportBox:SetText(code)
+        exportBox:SetFocus()
+        exportBox:HighlightText()
+        Report(string.format(L["Exported '%s'. Copy the code with Ctrl+C."], ns.profileName))
+    end)
+    exportBox = pfb:Code(L["Export code"])
+    pfb:Header(L["Import"])
+    importBox = pfb:Code(L["Import code"])
+    pfb:Input(L["Name for the imported profile (optional)"], function() return importName end, function(v) importName = v end)
+    pfb:Button(L["Import profile"], function()
+        local name, err = ns.ImportProfile(importBox:GetText(), importName)
+        if name then
+            importBox:SetText("")
+            importName = ""
+            ns.SetProfile(name)
+            Report(string.format(L["Imported as '%s'."], name))
+        else
+            Report(err)
+        end
+    end)
+
+    -- Entrada en el menú de AddOns de Blizzard: solo abre la ventana propia.
+    local stub = CreateFrame("Frame")
+    stub.name = "ModiTools"
+    local stubTitle = Label(stub, "ModiTools", 24, C.accent)
+    stubTitle:SetPoint("TOPLEFT", 16, -16)
+    local stubText = Label(stub, L["Settings live in ModiTools' own window."], 12, C.text)
+    stubText:SetPoint("TOPLEFT", stubTitle, "BOTTOMLEFT", 0, -12)
+    local open = CreateButton(stub, L["Open ModiTools"], 180, 28, function()
+        pcall(function() if SettingsPanel then SettingsPanel:Hide() end end)
+        ns.OpenWindow()
+    end)
+    open:SetPoint("TOPLEFT", stubText, "BOTTOMLEFT", 0, -16)
+    if Settings and Settings.RegisterCanvasLayoutCategory then
+        local category = Settings.RegisterCanvasLayoutCategory(stub, stub.name)
+        Settings.RegisterAddOnCategory(category)
         ns.categoryID = category:GetID()
     elseif InterfaceOptions_AddCategory then
-        InterfaceOptions_AddCategory(main)
-        for _, sub in ipairs(subs) do InterfaceOptions_AddCategory(sub) end
+        InterfaceOptions_AddCategory(stub)
     end
-    ns.RefreshOptions()
+
+    SelectPage("home")
 end

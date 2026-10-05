@@ -1,14 +1,19 @@
 ## Interface: 120000, 110207, 50503, 40402, 11508
 ## Title: ModiTools
-## Notes: Utilidades: yardas al target, barra de casteo del focus, casteos de mobs marcados y duración de la prepot. /modi para configurar.
+## Notes: Utilidades: yardas al target, barra de casteo del focus, casteos de mobs marcados, alerta de threat, brez en una tecla y duración de la prepot. /modi para configurar.
 ## Author: Villa
-## Version: 0.5
+## Version: 0.7
 ## SavedVariables: ModiToolsDB
 
+Locales.lua
 Core.lua
+Profiles.lua
 Yards.lua
 Sounds.lua
 FocusCast.lua
 MarkedCasts.lua
 Prepot.lua
+ThreatAlert.lua
+BrezKey.lua
 Options.lua
+Minimap.lua

@@ -7,6 +7,7 @@
 
 local _, ns = ...
 local PREFIX = ns.PREFIX
+local L = ns.L
 
 local QUESTION = "Interface\\Icons\\INV_Misc_QuestionMark"
 
@@ -204,7 +205,7 @@ local function Detect(spellID, before)
     if best then
         Start(best.id, best.icon, best.duration, best.expiration)
     elseif ns.debug then
-        print(PREFIX .. "prepot: no se encontró el buff de la poción (" .. tostring(spellID) .. ").")
+        print(PREFIX .. "prepot: potion buff not found (" .. tostring(spellID) .. ").")
     end
 end
 
@@ -236,7 +237,7 @@ frame:SetScript("OnEvent", function(_, event, _, b, c, d)
         local before = pending[c]
         if before then
             pending[c] = nil
-            if ns.debug then print(PREFIX .. "prepot detectada: " .. tostring(c)) end
+            if ns.debug then print(PREFIX .. "prepot detected: " .. tostring(c)) end
             C_Timer.After(0.2, function() pcall(Detect, c, before) end)
         end
     elseif event == "UNIT_AURA" then
@@ -290,18 +291,19 @@ end
 
 function Prepot.Slash(arg)
     local cmd, rest = arg:match("^(%S+)%s*(.*)$")
+    cmd = cmd and cmd:lower()
     local id = tonumber(rest)
     if cmd == "test" then
         Start(-1, QUESTION, 30, GetTime() + 30, true)
-        print(PREFIX .. "prueba de prepot: 30 s.")
+        print(PREFIX .. L["Prepot test: 30 s."])
     elseif cmd == "add" and id then
         cfg().extra[id] = true
-        print(PREFIX .. "spellID " .. id .. " agregado como poción.")
+        print(PREFIX .. string.format(L["spellID %d added as a potion."], id))
     elseif cmd == "remove" and id then
         cfg().extra[id] = nil
         potionSpell[id] = nil
-        print(PREFIX .. "spellID " .. id .. " quitado.")
+        print(PREFIX .. string.format(L["spellID %d removed."], id))
     else
-        print(PREFIX .. "uso: /modi prepot test | add <spellID> | remove <spellID>")
+        print(PREFIX .. L["Usage: /modi prepot test | add <spellID> | remove <spellID>"])
     end
 end

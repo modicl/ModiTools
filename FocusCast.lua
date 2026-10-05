@@ -2,6 +2,7 @@
 
 local _, ns = ...
 local PREFIX = ns.PREFIX
+local L = ns.L
 
 local TEXTURES = {
     Blizzard = "Interface\\TargetingFrame\\UI-StatusBar",
@@ -42,25 +43,34 @@ do
         if not entry.header then soundIndex[entry.value] = entry end
     end
 
-    add({ header = true, label = "Clásicos" })
-    add({ value = "raid", label = "Aviso de banda", id = 8959 })
-    add({ value = "ready", label = "Ready check", id = 8960 })
-    add({ value = "alarm", label = "Alarma", id = 12867 })
-    add({ value = "ping", label = "Ping de mapa", id = 3175 })
-    add({ value = "whisper", label = "Susurro", id = 3081 })
-    add({ value = "quest", label = "Misión completa", id = 878 })
-    add({ value = "levelup", label = "Subida de nivel", id = 888 })
+    -- `en` es la clave de traducción; ns.LocalizeSounds() rellena `label` al crear la interfaz.
+    add({ header = true, en = "Classic" })
+    add({ value = "raid", en = "Raid warning", id = 8959 })
+    add({ value = "ready", en = "Ready check", id = 8960 })
+    add({ value = "alarm", en = "Alarm", id = 12867 })
+    add({ value = "ping", en = "Map ping", id = 3175 })
+    add({ value = "whisper", en = "Whisper", id = 3081 })
+    add({ value = "quest", en = "Quest complete", id = 878 })
+    add({ value = "levelup", en = "Level up", id = 888 })
 
     for _, group in ipairs(ns.SoundLibrary or {}) do
-        add({ header = true, label = group.category })
+        add({ header = true, en = group.category })
         for _, snd in ipairs(group.sounds) do
             -- el texto localizado lo entrega el propio juego (CDMSND_*)
             add({ value = "cdm" .. snd.id, label = _G[snd.key] or snd.name, id = snd.id })
         end
     end
 
-    add({ header = true, label = "Otros" })
-    add({ value = "custom", label = "Personalizado" })
+    add({ header = true, en = "Other" })
+    add({ value = "custom", en = "Custom" })
+end
+
+-- Asigna los textos según el idioma activo (se llama al crear la interfaz).
+function ns.LocalizeSounds()
+    for _, e in ipairs(ns.FocusSounds) do
+        if e.en then e.label = L[e.en] end
+    end
+    ns.FocusSounds._groups = nil
 end
 
 local Focus = {}
@@ -201,7 +211,7 @@ local function UpdateCast()
     local ok, err = pcall(UpdateCastTimer)
     if not ok and not warned then
         warned = true
-        print(PREFIX .. "no se pudo leer el casteo del focus: " .. tostring(err))
+        print(PREFIX .. string.format(L["Could not read the focus cast: %s"], tostring(err)))
     end
 end
 
@@ -220,7 +230,7 @@ end
 -- Vista previa para poder ubicar y personalizar la barra mientras está desbloqueada.
 function ShowPreview()
     icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
-    nameText:SetText("Cast del focus")
+    nameText:SetText(L["Focus cast"])
     timeText:SetText("1.5")
     bar:SetMinMaxValues(0, 1)
     bar:SetValue(0.6)
@@ -259,13 +269,13 @@ end
 
 local lastSound = 0
 
-function ns.PlayFocusSound(key)
+-- Reproduce un sonido de la lista (o uno personalizado: soundkit ID o ruta de archivo).
+function ns.PlaySoundKey(key, custom)
     if key == "custom" then
-        local v = cfg().soundCustom
-        if tonumber(v) then
-            PlaySound(tonumber(v), "Master")
-        elseif v and v ~= "" then
-            PlaySoundFile(v, "Master")
+        if tonumber(custom) then
+            PlaySound(tonumber(custom), "Master")
+        elseif custom and custom ~= "" then
+            PlaySoundFile(custom, "Master")
         end
         return
     end
@@ -273,6 +283,10 @@ function ns.PlayFocusSound(key)
     if snd and snd.id then
         PlaySound(snd.id, "Master")
     end
+end
+
+function ns.PlayFocusSound(key)
+    ns.PlaySoundKey(key, cfg().soundCustom)
 end
 
 local function PlayLimited(key)
@@ -307,7 +321,7 @@ local unitEvents = {
 local eventsOn = false
 
 frame:SetScript("OnEvent", function(_, event)
-    if ns.debug then print(PREFIX .. "evento: " .. event) end
+    if ns.debug then print(PREFIX .. "event: " .. event) end
     local c = cfg()
     if event == "PLAYER_FOCUS_CHANGED" then
         failedUntil = 0
@@ -316,7 +330,7 @@ frame:SetScript("OnEvent", function(_, event)
         UpdateCast()
         if c.soundStart and ShouldPlayStart(c) then PlayLimited(c.soundStartKey) end
     elseif event == "UNIT_SPELLCAST_INTERRUPTED" then
-        ShowFailed("Interrumpido")
+        ShowFailed(L["Interrupted"])
         if c.soundInterrupt then PlayLimited(c.soundInterruptKey) end
     elseif event == "UNIT_SPELLCAST_FAILED" then
         if not cast.active then return end
@@ -335,7 +349,7 @@ local function SetEvents(on)
     for _, e in ipairs(unitEvents) do
         -- un evento que el cliente no conozca no debe romper la carga
         local ok = pcall(frame.RegisterUnitEvent, frame, e, "focus")
-        if not ok then print(PREFIX .. "evento no disponible: " .. e) end
+        if not ok then print(PREFIX .. string.format(L["Event not available: %s"], e)) end
     end
 end
 
@@ -402,15 +416,16 @@ end
 
 function Focus.Slash(arg)
     local cmd, rest = arg:match("^(%S+)%s*(.*)$")
+    cmd = cmd and cmd:lower()
     if cmd == "sound" and rest ~= "" then
         local c = cfg()
         c.soundCustom = rest
         c.soundStartKey = "custom"
         Focus.Apply()
         if ns.RefreshOptions then ns.RefreshOptions() end
-        print(PREFIX .. "sonido personalizado: " .. rest)
+        print(PREFIX .. string.format(L["Custom sound: %s"], rest))
         ns.PlayFocusSound("custom")
     else
-        print(PREFIX .. "uso: /modi focus sound <soundkitID o ruta del archivo>")
+        print(PREFIX .. L["Usage: /modi focus sound <soundkitID or file path>"])
     end
 end

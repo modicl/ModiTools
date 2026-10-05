@@ -4,7 +4,7 @@
 local _, ns = ...
 
 ns.SoundLibrary = {
-    { category = "Animales", sounds = {
+    { category = "Animals", sounds = {
         { id = 316401, key = "CDMSND_ANIMALS_CAT", name = "Cat" },
         { id = 316406, key = "CDMSND_ANIMALS_CHICKEN", name = "Chicken" },
         { id = 316407, key = "CDMSND_ANIMALS_COW", name = "Cow" },
@@ -16,7 +16,7 @@ ns.SoundLibrary = {
         { id = 316414, key = "CDMSND_ANIMALS_SHEEP", name = "Sheep" },
         { id = 316415, key = "CDMSND_ANIMALS_WOLF", name = "Wolf" },
     } },
-    { category = "Dispositivos", sounds = {
+    { category = "Devices", sounds = {
         { id = 316442, key = "CDMSND_DEVICES_BOAT_HORN", name = "Boat Horn" },
         { id = 316436, key = "CDMSND_DEVICES_AIR_HORN", name = "Air Horn" },
         { id = 316713, key = "CDMSND_DEVICES_BIKE_HORN", name = "Bike Horn" },
@@ -29,7 +29,7 @@ ns.SoundLibrary = {
         { id = 316425, key = "CDMSND_DEVICES_STOVE_PIPE", name = "Stove Pipe" },
         { id = 316430, key = "CDMSND_DEVICES_TRASHCAN_LID", name = "Trashcan Lid" },
     } },
-    { category = "Impactos", sounds = {
+    { category = "Impacts", sounds = {
         { id = 316528, key = "CDMSND_IMPACTS_ANVIL_STRIKE", name = "Anvil Strike" },
         { id = 316419, key = "CDMSND_IMPACTS_BUBBLE_SMASH", name = "Bubble Smash" },
         { id = 316531, key = "CDMSND_IMPACTS_LOW_THUD", name = "Low Thud" },
@@ -41,7 +41,7 @@ ns.SoundLibrary = {
         { id = 316453, key = "CDMSND_IMPACTS_STRANGE_CLANG", name = "Strange Clang" },
         { id = 316535, key = "CDMSND_IMPACTS_SWORD_SCRAPE", name = "Sword Scrape" },
     } },
-    { category = "Instrumentos", sounds = {
+    { category = "Instruments", sounds = {
         { id = 316493, key = "CDMSND_INSTRUMENTS_BELL_RING", name = "Bell Ring" },
         { id = 316712, key = "CDMSND_INSTRUMENTS_BELL_TRILL", name = "Bell Trill" },
         { id = 316722, key = "CDMSND_INSTRUMENTS_BRASS", name = "Brass" },
@@ -55,7 +55,7 @@ ns.SoundLibrary = {
         { id = 316460, key = "CDMSND_INSTRUMENTS_SYNTH_HIGH", name = "Synth High" },
         { id = 316723, key = "CDMSND_INSTRUMENTS_WARHORN", name = "Warhorn" },
     } },
-    { category = "Cortos", sounds = {
+    { category = "Short", sounds = {
         { id = 353392, key = "CDMSND_SHORT_BELL_STRIKE", name = "Bell Strike" },
         { id = 353387, key = "CDMSND_SHORT_BELL_TREE", name = "Bell Tree" },
         { id = 353388, key = "CDMSND_SHORT_BIG_POT", name = "Big Pot" },

@@ -2,8 +2,8 @@
 --
 -- /modi                         -> abrir opciones
 -- /modi yards | focus | marked | prepot  -> activar/desactivar la herramienta
--- /modi unlock <yards|focus|marked|threat|brez|prepot|all>
--- /modi lock   <yards|focus|marked|threat|brez|prepot|all>
+-- /modi unlock <yards|focus|marked|threat|brez|timeline|prepot|all>
+-- /modi lock   <yards|focus|marked|threat|brez|timeline|prepot|all>
 -- /modi reset                   -> restablece posiciones
 -- /modi size <10-72>            -> tamaño de la fuente de las yardas
 -- /modi prepot test|add <id>|remove <id>
@@ -17,7 +17,18 @@ ns.defaults = {}
 ns.modules = {}
 ns.order = {}
 ns.debug = false
-ns.globalDefaults = {}   -- ajustes comunes a todos los perfiles (ventana, minimapa, idioma)
+ns.globalDefaults = {}
+
+-- Fuentes disponibles para los textos que permiten elegir tipo de letra.
+ns.FONT_PATHS = {
+    default = STANDARD_TEXT_FONT,
+    frizqt = "Fonts/FRIZQT__.TTF",
+    arialn = "Fonts/ARIALN.TTF",
+    morpheus = "Fonts/MORPHEUS.TTF",
+}
+function ns.FontPath(key)
+    return ns.FONT_PATHS[key] or STANDARD_TEXT_FONT
+end   -- ajustes comunes a todos los perfiles (ventana, minimapa, idioma)
 
 function ns.RegisterModule(key, defaults, mod)
     ns.defaults[key] = defaults
@@ -82,7 +93,7 @@ function ns.ApplyLockVisuals(frame, cfg)
 end
 
 function ns.ResetModule(key)
-    local keep = { enabled = true, unlocked = true, point = true, x = true, y = true, extra = true }
+    local keep = { enabled = true, unlocked = true, point = true, x = true, y = true, extra = true, spells = true, spellSounds = true }
     local cfg = ns.db[key]
     for k, v in pairs(ns.defaults[key]) do
         if not keep[k] then cfg[k] = ns.DeepCopy(v) end
@@ -125,7 +136,7 @@ local function OpenOptions()
 end
 
 local function Help()
-    print(ns.PREFIX .. "/modi, /modi yards|focus|marked|threat|brez|prepot, /modi unlock|lock <yards|focus|marked|threat|brez|prepot|all>, /modi reset, /modi minimap, /modi lang en|es, /modi profile, /modi size <n>, /modi prepot test|add <id>|remove <id>")
+    print(ns.PREFIX .. "/modi, /modi yards|focus|marked|threat|brez|timeline|prepot, /modi unlock|lock <yards|focus|marked|threat|brez|timeline|prepot|all>, /modi reset, /modi minimap, /modi lang en|es, /modi profile, /modi size <n>, /modi prepot test|add <id>|remove <id>")
 end
 
 SLASH_MODITOOLS1 = "/modi"
@@ -154,7 +165,7 @@ SlashCmdList["MODITOOLS"] = function(msg)
     elseif cmd == "unlock" or cmd == "lock" then
         local list = Targets(arg:lower())
         if not list then
-            print(ns.PREFIX .. string.format(L["Usage: /modi %s <yards|focus|marked|threat|brez|prepot|all>"], cmd))
+            print(ns.PREFIX .. string.format(L["Usage: /modi %s <yards|focus|marked|threat|brez|timeline|prepot|all>"], cmd))
             return
         end
         for _, key in ipairs(list) do

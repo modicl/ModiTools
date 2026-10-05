@@ -363,7 +363,7 @@ local MAXROWS = 15
 local builders = {}
 
 -- Casilla con estilo; devuelve la función que la sincroniza con el valor guardado.
-local function CreateCheck(panel, x, y, text, get, set)
+local function CreateCheck(panel, x, y, text, get, set, help)
     local box = CreateFrame("Button", nil, panel)
     box:SetSize(18, 18)
     box:SetPoint("TOPLEFT", x, y - 2)
@@ -375,6 +375,27 @@ local function CreateCheck(panel, x, y, text, get, set)
     local label = Label(panel, text, 12, C.text)
     label:SetPoint("LEFT", box, "RIGHT", 8, 0)
     box:SetHitRectInsets(0, -(label:GetStringWidth() + 10), 0, 0)
+
+    -- botón "?" con una explicación en el tooltip
+    if help then
+        local q = CreateFrame("Button", nil, panel)
+        q:SetSize(16, 16)
+        q:SetPoint("LEFT", label, "RIGHT", 8, 0)
+        Skin(q, C.bg, false)
+        q.sign = Label(q, "?", 11, C.accent)
+        q.sign:SetPoint("CENTER", 0, 0)
+        q:SetScript("OnEnter", function(self)
+            self.fill:SetColorTexture(rgb(C.hover))
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(text, 1, 0.82, 0)
+            GameTooltip:AddLine(help, 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        q:SetScript("OnLeave", function(self)
+            self.fill:SetColorTexture(rgb(C.bg))
+            GameTooltip:Hide()
+        end)
+    end
 
     local checked = false
     local function paint() mark:SetShown(checked) end
@@ -425,9 +446,9 @@ local function NewBuilder(panel)
         line:SetColorTexture(rgb(C.light, 0.45))
     end
 
-    function b:Check(text, get, set)
+    function b:Check(text, get, set, help)
         local x, y = self:Next()
-        self.refreshers[#self.refreshers + 1] = CreateCheck(panel, x, y, text, get, set)
+        self.refreshers[#self.refreshers + 1] = CreateCheck(panel, x, y, text, get, set, help)
     end
 
     function b:Slider(text, min, max, step, get, set)
@@ -675,6 +696,50 @@ local function NewBuilder(panel)
         self.refreshers[#self.refreshers + 1] = paint
     end
 
+    -- Lista de hechizos (ícono, nombre e ID) con botón para quitar cada uno.
+    function b:SpellList(getList, onRemove, maxRows)
+        local rows = {}
+        for i = 1, maxRows do
+            local x, y = self:Next()
+            local row = CreateFrame("Frame", nil, panel)
+            row:SetSize(262, 22)
+            row:SetPoint("TOPLEFT", x, y - 1)
+            row.icon = row:CreateTexture(nil, "ARTWORK")
+            row.icon:SetSize(20, 20)
+            row.icon:SetPoint("LEFT", 0, 0)
+            row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            row.name = Label(row, "", 11, C.text)
+            row.name:SetPoint("LEFT", row.icon, "RIGHT", 6, 0)
+            row.name:SetWidth(200)
+            row.remove = CreateButton(row, "X", 20, 18, function()
+                if row.id then onRemove(row.id) end
+            end)
+            row.remove:SetPoint("RIGHT", 0, 0)
+            row:Hide()
+            rows[i] = row
+        end
+        local empty = Label(panel, L["No spells yet."], 11, C.muted)
+        empty:SetPoint("TOPLEFT", rows[1], "TOPLEFT", 4, -4)
+
+        self.refreshers[#self.refreshers + 1] = function()
+            local list = getList()
+            local module = ns.modules.timeline
+            for i, row in ipairs(rows) do
+                local id = list[i]
+                if id then
+                    row.id = id
+                    row.icon:SetTexture(module.SpellIcon(id) or "Interface/Icons/INV_Misc_QuestionMark")
+                    row.name:SetText((module.SpellName(id) or L["Unknown spell"]) .. " |cffa0aa95(" .. id .. ")|r")
+                    row:Show()
+                else
+                    row.id = nil
+                    row:Hide()
+                end
+            end
+            empty:SetShown(#list == 0)
+        end
+    end
+
     -- Caja de texto para códigos largos (exportar / importar). Devuelve la caja.
     function b:Code(text)
         local x, y = self:Next()
@@ -742,6 +807,7 @@ ns.globalDefaults.window = { point = "CENTER", x = 0, y = 0 }
 
 local win
 local pages = {}      -- [key] = { frame, nav, module }
+ns._pages = pages   -- solo para pruebas
 local pageOrder = {}
 
 local function AddonVersion()
@@ -765,7 +831,38 @@ function ns.RefreshOptions()
     if win then RefreshNav() end
 end
 
+-- Barra lateral en árbol: una entrada puede tener subpáginas que se muestran con el cuadrito "+".
+
+local function LayoutNav()
+    local y = 4
+    for _, key in ipairs(pageOrder) do
+        local p = pages[key]
+        local nav = p.nav
+        local parent = p.parent and pages[p.parent]
+        if parent and not parent.nav.expanded then
+            nav:Hide()
+        else
+            nav:ClearAllPoints()
+            nav:SetPoint("TOPLEFT", 4, -y)
+            nav:SetPoint("TOPRIGHT", -4, -y)
+            nav:Show()
+            y = y + 34
+        end
+    end
+end
+
+local function PaintToggle(nav)
+    if nav.toggle then nav.toggle.sign:SetText(nav.expanded and "-" or "+") end
+end
+
 local function SelectPage(key)
+    local chosen = pages[key]
+    -- elegir una subpágina despliega a su padre
+    if chosen.parent then
+        local parentNav = pages[chosen.parent].nav
+        parentNav.expanded = true
+        PaintToggle(parentNav)
+    end
     for k, p in pairs(pages) do
         local selected = (k == key)
         p.frame:SetShown(selected)
@@ -774,14 +871,39 @@ local function SelectPage(key)
         p.nav.label:SetTextColor(rgb(selected and C.accent or C.text))
     end
     win.current = key
+    LayoutNav()
     ns.RefreshOptions()
 end
 
-local function AddNav(key, text, index, moduleKey)
+-- Cuadrito "+" / "-" de una entrada con subpáginas (se crea al agregar su primera subpágina).
+local function EnsureToggle(nav, parentKey)
+    if nav.toggle then return end
+    local box = CreateFrame("Button", nil, nav)
+    box:SetSize(14, 14)
+    box:SetPoint("LEFT", 8, 0)
+    Skin(box, C.bgDarker, true)
+    box.sign = Label(box, "+", 12, C.accent)
+    box.sign:SetPoint("CENTER", 0, 1)
+    box:SetScript("OnEnter", function(self) self.fill:SetColorTexture(rgb(C.hover)) end)
+    box:SetScript("OnLeave", function(self) self.fill:SetColorTexture(rgb(C.bgDarker)) end)
+    box:SetScript("OnClick", function()
+        nav.expanded = not nav.expanded
+        PaintToggle(nav)
+        -- al plegar con una subpágina abierta, se vuelve a la página principal
+        if not nav.expanded and win.current and pages[win.current] and pages[win.current].parent == parentKey then
+            SelectPage(parentKey)
+        else
+            LayoutNav()
+        end
+    end)
+    nav.toggle = box
+    nav.label:ClearAllPoints()
+    nav.label:SetPoint("LEFT", 28, 0)
+end
+
+local function AddNav(key, text, moduleKey, parentKey)
     local nav = CreateFrame("Button", nil, win.sidebar)
     nav:SetHeight(32)
-    nav:SetPoint("TOPLEFT", 4, -4 - (index - 1) * 34)
-    nav:SetPoint("TOPRIGHT", -4, -4 - (index - 1) * 34)
     nav.selectedBG = nav:CreateTexture(nil, "BACKGROUND")
     nav.selectedBG:SetAllPoints()
     nav.selectedBG:SetColorTexture(rgb(C.select))
@@ -795,13 +917,15 @@ local function AddNav(key, text, index, moduleKey)
     nav.bar:SetWidth(3)
     nav.bar:SetColorTexture(rgb(C.accent))
     nav.bar:Hide()
-    nav.label = Label(nav, text, 13, C.text)
-    nav.label:SetPoint("LEFT", 14, 0)
+    nav.label = Label(nav, text, parentKey and 12 or 13, C.text)
+    nav.label:SetPoint("LEFT", parentKey and 32 or 14, 0)
+    nav.expanded = false
     if moduleKey then
         nav.dot = nav:CreateTexture(nil, "ARTWORK")
         nav.dot:SetSize(8, 8)
         nav.dot:SetPoint("RIGHT", -10, 0)
     end
+    if parentKey then EnsureToggle(pages[parentKey].nav, parentKey) end
     nav:SetScript("OnClick", function() SelectPage(key) end)
     return nav
 end
@@ -821,8 +945,10 @@ local function PageHeader(panel, title, desc)
     line:SetColorTexture(rgb(C.light, 0.5))
 end
 
--- Crea una página de herramienta: marco + constructor + botón en la barra lateral.
-local function MakePage(key, title, desc, moduleKey)
+-- Crea una página de herramienta: marco + constructor + entrada en la barra lateral.
+-- opts.parent: clave de la página padre (la entrada queda dentro de su "+"); opts.label: texto corto del menú.
+local function MakePage(key, title, desc, moduleKey, opts)
+    opts = opts or {}
     local frame = CreateFrame("Frame", nil, win.content)
     frame:SetAllPoints()
     frame:Hide()
@@ -830,7 +956,10 @@ local function MakePage(key, title, desc, moduleKey)
     local b = NewBuilder(frame)
     frame:SetScript("OnShow", function() b:Refresh() end)
     pageOrder[#pageOrder + 1] = key
-    pages[key] = { frame = frame, nav = AddNav(key, title, #pageOrder, moduleKey), module = moduleKey }
+    pages[key] = {
+        frame = frame, module = moduleKey, parent = opts.parent,
+        nav = AddNav(key, opts.label or title, moduleKey, opts.parent),
+    }
     return b
 end
 
@@ -838,7 +967,7 @@ local function BuildHome()
     local frame = CreateFrame("Frame", nil, win.content)
     frame:SetAllPoints()
     pageOrder[#pageOrder + 1] = "home"
-    pages.home = { frame = frame, nav = AddNav("home", L["Home"], #pageOrder, nil) }
+    pages.home = { frame = frame, nav = AddNav("home", L["Home"], nil, nil) }
 
     local title = Label(frame, "ModiTools", 40, C.accent)
     title:SetFont(STANDARD_TEXT_FONT, 40, "OUTLINE")
@@ -863,6 +992,7 @@ local function BuildHome()
         .. "- " .. L["Marked casts: casts of marked mobs."] .. "\n"
         .. "- " .. L["Threat alert: warning when you lose aggro."] .. "\n"
         .. "- " .. L["Brez: combat res on a key."] .. "\n"
+        .. "- " .. L["CD Timeline: upcoming cooldowns of your spells."] .. "\n"
         .. "- " .. L["Prepot: time left on the potion you used."] .. "\n\n"
         .. L["The dot next to each tool shows whether it is enabled."],
         12, C.text)
@@ -886,7 +1016,7 @@ local function BuildHome()
     frame:SetScript("OnShow", function() hb:Refresh() end)
 
     local cmds = Label(frame,
-        L["Commands:"] .. "  /modi   ·   /modi yards|focus|marked|threat|brez|prepot   ·   "
+        L["Commands:"] .. "  /modi   ·   /modi yards|focus|marked|threat|brez|timeline|prepot   ·   "
         .. "/modi unlock|lock " .. L["<tool|all>"] .. "   ·   /modi reset   ·   /modi minimap   ·   /modi lang en|es",
         10, C.muted)
     cmds:SetWidth(538)
@@ -948,6 +1078,214 @@ end
 function ns.ToggleWindow()
     if not win then return end
     if win:IsShown() then win:Hide() else ns.OpenWindow() end
+end
+
+---------------------------------------------------------------------------
+-- Selector de hechizos de la clase (para la línea de cooldowns)
+---------------------------------------------------------------------------
+
+local picker
+local PICK_ROWS = 10
+local PICK_ROW_H = 38
+
+local function FormatCooldown(seconds)
+    if not seconds then return "" end
+    if seconds >= 60 then
+        local m, s = math.floor(seconds / 60), math.floor(seconds % 60)
+        return s > 0 and string.format("%d:%02d", m, s) or string.format("%d min", m)
+    end
+    return string.format("%d s", math.floor(seconds + 0.5))
+end
+
+local function RefreshPicker()
+    local p = picker
+    local total = #p.visible
+    local maxOffset = math.max(0, total - PICK_ROWS)
+    p.offset = math.max(0, math.min(p.offset, maxOffset))
+    local module = ns.modules.timeline
+
+    for i = 1, PICK_ROWS do
+        local row = p.rows[i]
+        local spell = p.visible[p.offset + i]
+        if spell then
+            row.spell = spell
+            row.icon:SetTexture(spell.icon or "Interface/Icons/INV_Misc_QuestionMark")
+            row.name:SetText(spell.name)
+            local detail = "ID " .. spell.id
+            if spell.cd then detail = string.format(L["Cooldown: %s"], FormatCooldown(spell.cd)) .. "  ·  " .. detail end
+            row.detail:SetText(detail)
+            row.mark:SetShown(module.IsTracked(spell.id))
+            row:Show()
+        else
+            row.spell = nil
+            row:Hide()
+        end
+    end
+
+    if maxOffset > 0 then
+        p.scroll.loading = true
+        p.scroll:SetMinMaxValues(0, maxOffset)
+        p.scroll:SetValue(p.offset)
+        p.scroll.loading = false
+    end
+    p.scroll:SetShown(maxOffset > 0)
+    p.empty:SetShown(total == 0)
+    p.status:SetText(string.format(L["%d of %d spells on the timeline"], #ns.db.timeline.spells, module.MaxSpells))
+end
+
+local function FilterPicker()
+    local p = picker
+    local query = (p.search:GetText() or ""):lower()
+    p.visible = {}
+    for _, spell in ipairs(p.spells) do
+        if query == "" or spell.name:lower():find(query, 1, true) or tostring(spell.id):find(query, 1, true) then
+            p.visible[#p.visible + 1] = spell
+        end
+    end
+    p.offset = 0
+    RefreshPicker()
+end
+
+local function BuildPicker()
+    local p = CreateFrame("Frame", "ModiToolsSpellPicker", UIParent)
+    p:SetSize(430, 560)
+    p:SetPoint("CENTER", 60, 0)
+    p:SetFrameStrata("DIALOG")
+    p:SetMovable(true)
+    p:SetClampedToScreen(true)
+    p:EnableMouse(true)
+    p:EnableMouseWheel(true)
+    Skin(p, C.bg, false)
+    p:Hide()
+    table.insert(UISpecialFrames, "ModiToolsSpellPicker")
+    p.spells, p.visible, p.rows, p.offset = {}, {}, {}, 0
+
+    local bar = CreateFrame("Frame", nil, p)
+    bar:SetHeight(32)
+    bar:SetPoint("TOPLEFT")
+    bar:SetPoint("TOPRIGHT")
+    bar:EnableMouse(true)
+    bar:RegisterForDrag("LeftButton")
+    bar:SetScript("OnDragStart", function() p:StartMoving() end)
+    bar:SetScript("OnDragStop", function() p:StopMovingOrSizing() end)
+    local title = Label(bar, L["Pick from my spells"], 15, C.accent)
+    title:SetPoint("LEFT", 14, 0)
+    local close = CreateButton(bar, "X", 24, 20, function() p:Hide() end)
+    close:SetPoint("RIGHT", -8, 0)
+
+    local hint = Label(p, L["Click a spell to add or remove it."], 11, C.muted)
+    hint:SetPoint("TOPLEFT", 14, -40)
+
+    local search = CreateFrame("EditBox", nil, p)
+    search:SetPoint("TOPLEFT", 14, -62)
+    search:SetPoint("TOPRIGHT", -14, -62)
+    search:SetHeight(24)
+    search:SetAutoFocus(false)
+    search:SetMaxLetters(40)
+    search:SetFont(STANDARD_TEXT_FONT, 12, "")
+    search:SetTextColor(rgb(C.text))
+    search:SetTextInsets(8, 8, 0, 0)
+    Skin(search, C.bgDarker, true)
+    search:SetScript("OnTextChanged", function(_, userInput) if userInput then FilterPicker() end end)
+    search:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    p.search = search
+    local placeholder = Label(search, L["Search..."], 11, C.muted)
+    placeholder:SetPoint("LEFT", 8, 0)
+    search:SetScript("OnEditFocusGained", function() placeholder:Hide() end)
+    search:SetScript("OnEditFocusLost", function(self) placeholder:SetShown((self:GetText() or "") == "") end)
+    p.placeholder = placeholder
+
+    local list = CreateFrame("Frame", nil, p)
+    list:SetPoint("TOPLEFT", 14, -94)
+    list:SetPoint("TOPRIGHT", -14, -94)
+    list:SetHeight(PICK_ROWS * PICK_ROW_H + 4)
+    Skin(list, C.bgDark, true)
+
+    for i = 1, PICK_ROWS do
+        local row = CreateFrame("Button", nil, list)
+        row:SetHeight(PICK_ROW_H)
+        row:SetPoint("TOPLEFT", 2, -2 - (i - 1) * PICK_ROW_H)
+        row:SetPoint("TOPRIGHT", -18, -2 - (i - 1) * PICK_ROW_H)
+        local hl = row:CreateTexture(nil, "HIGHLIGHT")
+        hl:SetAllPoints()
+        hl:SetColorTexture(rgb(C.hover, 0.7))
+        row.icon = row:CreateTexture(nil, "ARTWORK")
+        row.icon:SetSize(30, 30)
+        row.icon:SetPoint("LEFT", 6, 0)
+        row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        row.name = Label(row, "", 12, C.text)
+        row.name:SetPoint("TOPLEFT", row.icon, "TOPRIGHT", 8, -3)
+        row.name:SetWidth(250)
+        row.detail = Label(row, "", 10, C.muted)
+        row.detail:SetPoint("BOTTOMLEFT", row.icon, "BOTTOMRIGHT", 8, 3)
+        local check = CreateFrame("Frame", nil, row)
+        check:SetSize(18, 18)
+        check:SetPoint("RIGHT", -8, 0)
+        Skin(check, C.bgDarker, true)
+        row.mark = check:CreateTexture(nil, "ARTWORK")
+        row.mark:SetPoint("TOPLEFT", 4, -4)
+        row.mark:SetPoint("BOTTOMRIGHT", -4, 4)
+        row.mark:SetColorTexture(rgb(C.accent))
+        row:SetScript("OnClick", function(self)
+            local spell = self.spell
+            if not spell then return end
+            local module = ns.modules.timeline
+            local ok, msg
+            if module.IsTracked(spell.id) then
+                ok, msg = module.RemoveSpell(spell.id)
+            else
+                ok, msg = module.AddSpell(spell.id)
+            end
+            if msg then print(ns.PREFIX .. msg) end
+            RefreshPicker()
+        end)
+        row:Hide()
+        p.rows[i] = row
+    end
+
+    p.scroll = CreateFrame("Slider", nil, list)
+    p.scroll:SetOrientation("VERTICAL")
+    p.scroll:SetWidth(10)
+    p.scroll:SetPoint("TOPRIGHT", -4, -4)
+    p.scroll:SetPoint("BOTTOMRIGHT", -4, 4)
+    p.scroll:SetValueStep(1)
+    if p.scroll.SetObeyStepOnDrag then p.scroll:SetObeyStepOnDrag(true) end
+    Skin(p.scroll, C.bgDarker, true)
+    p.scroll:SetThumbTexture("Interface/Buttons/WHITE8x8")
+    p.scroll:GetThumbTexture():SetSize(10, 30)
+    p.scroll:GetThumbTexture():SetVertexColor(rgb(C.muted))
+    p.scroll:SetScript("OnValueChanged", function(self, v)
+        if self.loading then return end
+        p.offset = math.floor(v + 0.5)
+        RefreshPicker()
+    end)
+
+    p:SetScript("OnMouseWheel", function(_, delta)
+        p.offset = p.offset - delta * 3
+        RefreshPicker()
+    end)
+
+    p.empty = Label(list, L["No spells found."], 12, C.muted)
+    p.empty:SetPoint("CENTER")
+
+    p.status = Label(p, "", 11, C.accent)
+    p.status:SetPoint("BOTTOMLEFT", 14, 14)
+    local done = CreateButton(p, L["Done"], 90, 24, function() p:Hide() end)
+    done:SetPoint("BOTTOMRIGHT", -14, 10)
+
+    p:SetScript("OnShow", function()
+        p.spells = ns.modules.timeline.ScanSpells()
+        p.search:SetText("")
+        p.placeholder:Show()
+        FilterPicker()
+    end)
+    picker = p
+    return p
+end
+
+function ns.OpenSpellPicker()
+    local p = picker or BuildPicker()
+    if p:IsShown() then p:Hide() else p:Show() end
 end
 
 function ns.CreateOptions()
@@ -1137,6 +1475,139 @@ function ns.CreateOptions()
     pb:Color(L["Text"], "prepot", "colorText")
     pb:Color(L["Warning text"], "prepot", "colorWarn")
     pb:Color(L["Border"], "prepot", "colorBorder", true)
+
+    -- Línea de tiempo de cooldowns
+    local tlStatus, tlSpellField = "", ""
+    local tl = MakePage("timeline", "CD Timeline",
+        L["A timeline of the cooldowns you choose, showing when they come back."], "timeline")
+    GeneralSection(tl, "timeline")
+    local orientationOptions = {
+        { value = "H", label = L["Horizontal"] },
+        { value = "V", label = L["Vertical"] },
+    }
+    tl:Header(L["Add a spell"])
+    tl:Button(L["Pick from my spells"], function() ns.OpenSpellPicker() end)
+    tl:Input(L["Spell ID"], function() return tlSpellField end, function(v) tlSpellField = v end, true)
+    tl:Button(L["Add spell"], function()
+        local ok, msg = ns.modules.timeline.AddSpell(tlSpellField)
+        if ok then tlSpellField = "" end
+        tlStatus = msg
+        print(ns.PREFIX .. msg)
+        ns.RefreshOptions()
+    end)
+    tl:Info(function()
+        if tlStatus ~= "" then return tlStatus end
+        return L["Pick your spells from the list, or type a spell ID (the number in its wowhead.com page) and press Add."]
+    end, 3)
+    tl:Header(L["Timing"])
+    tl:Slider(L["Appear within (s)"], 5, 120, 1, Bind("timeline", "window"))
+    tl:Slider(L["Ignore cooldowns under (s)"], 1, 10, 0.5, Bind("timeline", "minCooldown"))
+    local combatGet, combatSet = Bind("timeline", "combatOnly")
+    tl:Check(L["Only in combat"], combatGet, combatSet,
+        L["The timeline is only shown while you are in combat, and its sounds (warning and ready) are muted outside of combat. Cooldowns keep being tracked, so everything works as soon as you enter combat. The preview (unlocked) is always visible so you can move it."])
+    tl:NewColumn()
+    tl:Header(L["Tracked spells"])
+    tl:SpellList(function() return ns.db.timeline.spells end, function(id)
+        local _, msg = ns.modules.timeline.RemoveSpell(id)
+        tlStatus = msg
+        ns.RefreshOptions()
+    end, 12)
+    tl:Cycle(L["Orientation"], orientationOptions, Bind("timeline", "orientation"))
+    tl:Button(L["Restore defaults"], function() ns.ResetModule("timeline") end)
+
+    local ts = MakePage("timeline_style", L["Timeline style"],
+        L["Orientation, size and colors of the timeline."], nil, { parent = "timeline", label = L["Style"] })
+    ts:Header(L["Layout"])
+    ts:Cycle(L["Orientation"], orientationOptions, Bind("timeline", "orientation"))
+    ts:Cycle(L["Font"], fontOptions, Bind("timeline", "font"))
+    ts:Check(L["Reverse direction"], Bind("timeline", "reverse"))
+    ts:Slider(L["Length"], 100, 900, 5, Bind("timeline", "length"))
+    ts:Slider(L["Thickness"], 2, 40, 1, Bind("timeline", "thickness"))
+    ts:Slider(L["Icon size"], 16, 64, 1, Bind("timeline", "iconSize"))
+    ts:Slider(L["Opacity"], 0.2, 1, 0.05, Bind("timeline", "alpha"))
+    ts:Slider(L["Font size"], 8, 20, 1, Bind("timeline", "fontSize"))
+    ts:Header(L["Elements"])
+    ts:Check(L["Show time"], Bind("timeline", "showTime"))
+    ts:Check(L["Show ticks"], Bind("timeline", "showTicks"))
+    ts:Check(L["Show now marker"], Bind("timeline", "showNow"))
+    ts:Check(L["Flash when ready"], Bind("timeline", "flashReady"))
+    ts:Check(L["Icon border"], Bind("timeline", "iconBorder"))
+    ts:NewColumn()
+    ts:Header(L["Colors"])
+    ts:Color(L["Line"], "timeline", "colorLine", true)
+    ts:Color(L["Ticks"], "timeline", "colorTick", true)
+    ts:Color(L["Now marker"], "timeline", "colorNow")
+    ts:Color(L["Border"], "timeline", "colorBorder", true)
+    ts:Header(L["Visibility"])
+    ts:Check(L["Always show the line"], Bind("timeline", "alwaysShow"))
+
+    -- Sonidos de la línea de cooldowns
+    local tsSelected
+    local globalSounds = {}
+    for i, e in ipairs(ns.FocusSounds) do globalSounds[i] = e end
+    globalSounds.preview = function(v) ns.PlaySoundKey(v, ns.db.timeline.soundCustom) end
+
+    -- por hechizo: opciones especiales primero, luego la lista completa de sonidos
+    local perSpellSounds = {
+        { header = true, label = L["Options"] },
+        { value = "global", label = L["Use the global sound"] },
+        { value = "none", label = L["No sound"] },
+    }
+    for _, e in ipairs(ns.FocusSounds) do perSpellSounds[#perSpellSounds + 1] = e end
+    perSpellSounds.preview = globalSounds.preview
+
+    local spellChoices = {}
+    local function RefreshSpellChoices()
+        for i = #spellChoices, 1, -1 do spellChoices[i] = nil end
+        local found = false
+        for _, id in ipairs(ns.db.timeline.spells) do
+            spellChoices[#spellChoices + 1] = {
+                value = id,
+                label = (ns.modules.timeline.SpellName(id) or L["Unknown spell"]) .. " (" .. id .. ")",
+            }
+            if id == tsSelected then found = true end
+        end
+        if not found then tsSelected = spellChoices[1] and spellChoices[1].value or nil end
+    end
+
+    local function SpellSound(field, default)
+        return function()
+            local s = tsSelected and ns.db.timeline.spellSounds[tsSelected]
+            return (s and s[field]) or default
+        end,
+        function(v)
+            if not tsSelected then return end
+            local all = ns.db.timeline.spellSounds
+            all[tsSelected] = all[tsSelected] or {}
+            if field == "warnAt" and v == 0 then v = nil end
+            all[tsSelected][field] = v
+        end
+    end
+
+    local tsd = MakePage("timeline_sound", L["Timeline sounds"],
+        L["Sounds for when your cooldowns are about to end or are ready."], nil, { parent = "timeline", label = L["Sounds"] })
+    tsd.refreshers[#tsd.refreshers + 1] = RefreshSpellChoices
+    tsd:Header(L["All spells"])
+    tsd:Check(L["Sound when a cooldown is about to end"], Bind("timeline", "soundWarn"))
+    tsd:Cycle(L["Warning sound"], globalSounds, Bind("timeline", "soundWarnKey"))
+    tsd:Slider(L["Warn at (s)"], 1, 60, 1, Bind("timeline", "warnAt"))
+    tsd:Check(L["Sound when ready"], Bind("timeline", "soundReady"))
+    tsd:Cycle(L["Ready sound"], globalSounds, Bind("timeline", "soundReadyKey"))
+    tsd:Info(function()
+        return L["Choose \"Custom\" in a sound list and set it with /modi timeline sound <soundkitID or file path>."]
+    end, 3)
+    tsd:NewColumn()
+    tsd:Header(L["Per spell"])
+    tsd:Cycle(L["Spell"], spellChoices,
+        function() return tsSelected end,
+        function(v) tsSelected = v; ns.RefreshOptions() end)
+    tsd:Info(function()
+        if #ns.db.timeline.spells == 0 then return L["Add spells first."] end
+        return L["Choose a spell to give it its own sounds. \"Use the global sound\" keeps the shared one."]
+    end, 3)
+    tsd:Cycle(L["Warning sound"], perSpellSounds, SpellSound("warn", "global"))
+    tsd:Slider(L["Warn at (s), 0 = global"], 0, 60, 1, SpellSound("warnAt", 0))
+    tsd:Cycle(L["Ready sound"], perSpellSounds, SpellSound("ready", "global"))
 
     -- Perfiles
     local profileOptions = {}

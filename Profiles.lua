@@ -268,10 +268,28 @@ local function Sanitize(value, default)
             if type(value) == "table" then v = value[k] end
             out[k] = Sanitize(v, d)
         end
-        -- tablas sin campos fijos (p. ej. prepot.extra: lista de spellIDs)
+        -- tablas sin campos fijos (prepot.extra, timeline.spells: listas de spellIDs)
         if next(default) == nil and type(value) == "table" then
             for k, v in pairs(value) do
-                if (type(k) == "number" or type(k) == "string") and type(v) == "boolean" then out[k] = v end
+                local isKey = type(k) == "number" or type(k) == "string"
+                if isKey and type(v) == "boolean" then
+                    out[k] = v
+                elseif type(k) == "number" and type(v) == "number" and v > 0 and v < 10000000 then
+                    out[k] = v   -- listas de spellIDs
+                elseif type(k) == "number" and type(v) == "table" then
+                    -- ajustes por hechizo (p. ej. timeline.spellSounds): solo textos y números simples
+                    local inner = {}
+                    for kk, vv in pairs(v) do
+                        if type(kk) == "string" and #kk <= 20 then
+                            if type(vv) == "string" then
+                                inner[kk] = vv:sub(1, 40)
+                            elseif type(vv) == "number" and vv == vv and math.abs(vv) <= 10000 then
+                                inner[kk] = vv
+                            end
+                        end
+                    end
+                    out[k] = inner
+                end
             end
         end
         return out

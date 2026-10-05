@@ -470,16 +470,67 @@ local function NewBuilder(panel)
         s:SetValueStep(step)
         if s.SetObeyStepOnDrag then s:SetObeyStepOnDrag(true) end
 
-        local value = Label(panel, "", 11, C.accent)
-        value:SetPoint("LEFT", s, "RIGHT", 8, 0)
+        -- el valor se puede arrastrar con la barra o escribir en la cajita (solo números)
+        local box = CreateFrame("EditBox", nil, panel)
+        box:SetPoint("LEFT", s, "RIGHT", 8, 0)
+        box:SetSize(40, 18)
+        box:SetAutoFocus(false)
+        box:SetMaxLetters(6)
+        box:SetJustifyH("CENTER")
+        box:SetFont(STANDARD_TEXT_FONT, 11, "")
+        box:SetTextColor(rgb(C.accent))
+        Skin(box, C.bgDarker, true)
+        s.box = box
+        s.caption = text
 
         local fmt = step < 1 and "%.2f" or "%d"
+        local allowDot = step < 1
         local loading = false
+
+        local function Snap(v)
+            v = math.max(min, math.min(max, v))
+            return math.floor(v / step + 0.5) * step
+        end
+        local function ShowValue(v)
+            box:SetText(string.format(fmt, v))
+        end
+
         s:SetScript("OnValueChanged", function(_, v)
             v = math.floor(v / step + 0.5) * step
-            value:SetText(string.format(fmt, v))
+            if not box:HasFocus() then ShowValue(v) end
             if loading then return end
             set(v)
+        end)
+
+        -- solo dígitos (y un punto decimal cuando el paso es menor a 1)
+        box:SetScript("OnTextChanged", function(self, userInput)
+            if not userInput then return end
+            local raw = self:GetText() or ""
+            local clean = raw:gsub(allowDot and "[^%d%.]" or "[^%d]", "")
+            if allowDot then
+                local first = clean:find("%.", 1)
+                if first then clean = clean:sub(1, first) .. clean:sub(first + 1):gsub("%.", "") end
+            end
+            if clean ~= raw then self:SetText(clean) end
+        end)
+        local function Commit()
+            local typed = tonumber(box:GetText())
+            if typed then
+                local v = Snap(typed)
+                loading = true
+                s:SetValue(v)       -- mueve la barra (sin guardar dos veces)
+                loading = false
+                set(v)              -- guarda el valor escrito
+                ShowValue(v)
+            else
+                ShowValue(Snap(get()))
+            end
+        end
+        box:SetScript("OnEnterPressed", function(self) Commit() self:ClearFocus() end)
+        box:SetScript("OnEditFocusLost", function() Commit() end)
+        box:SetScript("OnEscapePressed", function(self)
+            ShowValue(Snap(get()))
+            self:ClearFocus()
         end)
         self.refreshers[#self.refreshers + 1] = function()
             loading = true
@@ -728,8 +779,9 @@ local function NewBuilder(panel)
                 local id = list[i]
                 if id then
                     row.id = id
-                    row.icon:SetTexture(module.SpellIcon(id) or "Interface/Icons/INV_Misc_QuestionMark")
-                    row.name:SetText((module.SpellName(id) or L["Unknown spell"]) .. " |cffa0aa95(" .. id .. ")|r")
+                    row.icon:SetTexture(module.EntryIcon(id) or "Interface/Icons/INV_Misc_QuestionMark")
+                    local tag = id < 0 and (L["Item"] .. " " .. -id) or tostring(id)
+                    row.name:SetText((module.EntryName(id) or L["Unknown spell"]) .. " |cffa0aa95(" .. tag .. ")|r")
                     row:Show()
                 else
                     row.id = nil
@@ -1111,8 +1163,10 @@ local function RefreshPicker()
             row.spell = spell
             row.icon:SetTexture(spell.icon or "Interface/Icons/INV_Misc_QuestionMark")
             row.name:SetText(spell.name)
-            local detail = "ID " .. spell.id
+            local detail = "ID " .. math.abs(spell.id)
             if spell.cd then detail = string.format(L["Cooldown: %s"], FormatCooldown(spell.cd)) .. "  ·  " .. detail end
+            if spell.kind == "trinket" then detail = L["Trinket"] .. "  ·  " .. detail
+            elseif spell.kind == "potion" then detail = L["Potion"] .. "  ·  " .. detail end
             row.detail:SetText(detail)
             row.mark:SetShown(module.IsTracked(spell.id))
             row:Show()
@@ -1130,7 +1184,7 @@ local function RefreshPicker()
     end
     p.scroll:SetShown(maxOffset > 0)
     p.empty:SetShown(total == 0)
-    p.status:SetText(string.format(L["%d of %d spells on the timeline"], #ns.db.timeline.spells, module.MaxSpells))
+    p.status:SetText(string.format(L["%d of %d on the timeline"], #ns.db.timeline.spells, module.MaxSpells))
 end
 
 local function FilterPicker()
@@ -1168,12 +1222,12 @@ local function BuildPicker()
     bar:RegisterForDrag("LeftButton")
     bar:SetScript("OnDragStart", function() p:StartMoving() end)
     bar:SetScript("OnDragStop", function() p:StopMovingOrSizing() end)
-    local title = Label(bar, L["Pick from my spells"], 15, C.accent)
+    local title = Label(bar, L["Pick from my spells and items"], 15, C.accent)
     title:SetPoint("LEFT", 14, 0)
     local close = CreateButton(bar, "X", 24, 20, function() p:Hide() end)
     close:SetPoint("RIGHT", -8, 0)
 
-    local hint = Label(p, L["Click a spell to add or remove it."], 11, C.muted)
+    local hint = Label(p, L["Click an entry to add or remove it."], 11, C.muted)
     hint:SetPoint("TOPLEFT", 14, -40)
 
     local search = CreateFrame("EditBox", nil, p)
@@ -1232,9 +1286,9 @@ local function BuildPicker()
             local module = ns.modules.timeline
             local ok, msg
             if module.IsTracked(spell.id) then
-                ok, msg = module.RemoveSpell(spell.id)
+                ok, msg = module.RemoveEntry(spell.id)
             else
-                ok, msg = module.AddSpell(spell.id)
+                ok, msg = module.AddEntry(spell.id)
             end
             if msg then print(ns.PREFIX .. msg) end
             RefreshPicker()
@@ -1274,7 +1328,7 @@ local function BuildPicker()
     done:SetPoint("BOTTOMRIGHT", -14, 10)
 
     p:SetScript("OnShow", function()
-        p.spells = ns.modules.timeline.ScanSpells()
+        p.spells = ns.modules.timeline.ScanEntries()
         p.search:SetText("")
         p.placeholder:Show()
         FilterPicker()
@@ -1477,7 +1531,11 @@ function ns.CreateOptions()
     pb:Color(L["Border"], "prepot", "colorBorder", true)
 
     -- Línea de tiempo de cooldowns
-    local tlStatus, tlSpellField = "", ""
+    local tlStatus, tlSpellField, tlKind = "", "", "spell"
+    local kindOptions = {
+        { value = "spell", label = L["Spell"] },
+        { value = "item", label = L["Item"] },
+    }
     local tl = MakePage("timeline", "CD Timeline",
         L["A timeline of the cooldowns you choose, showing when they come back."], "timeline")
     GeneralSection(tl, "timeline")
@@ -1485,11 +1543,13 @@ function ns.CreateOptions()
         { value = "H", label = L["Horizontal"] },
         { value = "V", label = L["Vertical"] },
     }
-    tl:Header(L["Add a spell"])
-    tl:Button(L["Pick from my spells"], function() ns.OpenSpellPicker() end)
-    tl:Input(L["Spell ID"], function() return tlSpellField end, function(v) tlSpellField = v end, true)
-    tl:Button(L["Add spell"], function()
-        local ok, msg = ns.modules.timeline.AddSpell(tlSpellField)
+    tl:Header(L["Add to the timeline"])
+    tl:Button(L["Pick from my spells and items"], function() ns.OpenSpellPicker() end)
+    tl:Cycle(L["Type"], kindOptions, function() return tlKind end, function(v) tlKind = v end)
+    tl:Input(L["ID"], function() return tlSpellField end, function(v) tlSpellField = v end, true)
+    tl:Button(L["Add"], function()
+        local add = tlKind == "item" and ns.modules.timeline.AddItem or ns.modules.timeline.AddSpell
+        local ok, msg = add(tlSpellField)
         if ok then tlSpellField = "" end
         tlStatus = msg
         print(ns.PREFIX .. msg)
@@ -1497,8 +1557,8 @@ function ns.CreateOptions()
     end)
     tl:Info(function()
         if tlStatus ~= "" then return tlStatus end
-        return L["Pick your spells from the list, or type a spell ID (the number in its wowhead.com page) and press Add."]
-    end, 3)
+        return L["Pick from the list, or type a spell or item ID (the number in its wowhead.com page) and press Add."]
+    end, 2)
     tl:Header(L["Timing"])
     tl:Slider(L["Appear within (s)"], 5, 120, 1, Bind("timeline", "window"))
     tl:Slider(L["Ignore cooldowns under (s)"], 1, 10, 0.5, Bind("timeline", "minCooldown"))
@@ -1506,7 +1566,7 @@ function ns.CreateOptions()
     tl:Check(L["Only in combat"], combatGet, combatSet,
         L["The timeline is only shown while you are in combat, and its sounds (warning and ready) are muted outside of combat. Cooldowns keep being tracked, so everything works as soon as you enter combat. The preview (unlocked) is always visible so you can move it."])
     tl:NewColumn()
-    tl:Header(L["Tracked spells"])
+    tl:Header(L["On the timeline"])
     tl:SpellList(function() return ns.db.timeline.spells end, function(id)
         local _, msg = ns.modules.timeline.RemoveSpell(id)
         tlStatus = msg
@@ -1563,7 +1623,7 @@ function ns.CreateOptions()
         for _, id in ipairs(ns.db.timeline.spells) do
             spellChoices[#spellChoices + 1] = {
                 value = id,
-                label = (ns.modules.timeline.SpellName(id) or L["Unknown spell"]) .. " (" .. id .. ")",
+                label = (ns.modules.timeline.EntryName(id) or L["Unknown spell"]) .. " (" .. math.abs(id) .. ")",
             }
             if id == tsSelected then found = true end
         end
@@ -1597,13 +1657,13 @@ function ns.CreateOptions()
         return L["Choose \"Custom\" in a sound list and set it with /modi timeline sound <soundkitID or file path>."]
     end, 3)
     tsd:NewColumn()
-    tsd:Header(L["Per spell"])
-    tsd:Cycle(L["Spell"], spellChoices,
+    tsd:Header(L["Per spell or item"])
+    tsd:Cycle(L["Spell or item"], spellChoices,
         function() return tsSelected end,
         function(v) tsSelected = v; ns.RefreshOptions() end)
     tsd:Info(function()
-        if #ns.db.timeline.spells == 0 then return L["Add spells first."] end
-        return L["Choose a spell to give it its own sounds. \"Use the global sound\" keeps the shared one."]
+        if #ns.db.timeline.spells == 0 then return L["Add something to the timeline first."] end
+        return L["Choose a spell or item to give it its own sounds. \"Use the global sound\" keeps the shared one."]
     end, 3)
     tsd:Cycle(L["Warning sound"], perSpellSounds, SpellSound("warn", "global"))
     tsd:Slider(L["Warn at (s), 0 = global"], 0, 60, 1, SpellSound("warnAt", 0))

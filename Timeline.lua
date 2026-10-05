@@ -57,8 +57,8 @@ function Timeline.SpellIcon(id)
     return GetSpellTexture and GetSpellTexture(id)
 end
 
--- Devuelve el momento en que termina el cooldown y su duración, o nil si no está en cooldown.
-local function ReadCooldown(id)
+-- Cooldown de un hechizo: devuelve el momento en que termina y su duración, o nil.
+local function ReadSpellCooldown(id)
     local start, duration
     if C_Spell and C_Spell.GetSpellCooldown then
         local info = C_Spell.GetSpellCooldown(id)
@@ -78,6 +78,85 @@ local function ReadCooldown(id)
     if start and duration and duration > 0 and start > 0 then
         return start + duration, duration
     end
+    return nil, 0
+end
+
+---------------------------------------------------------------------------
+-- Objetos (pociones y trinkets): se guardan en la lista como ID negativo (-itemID)
+---------------------------------------------------------------------------
+
+local itemSpellCache = {}
+
+-- Hechizo de uso del objeto (el que se lanza al usarlo), o nil.
+local function ItemUseSpell(itemID)
+    if itemSpellCache[itemID] ~= nil then return itemSpellCache[itemID] or nil end
+    local fn = (C_Item and C_Item.GetItemSpell) or GetItemSpell
+    local spellID
+    if fn then
+        local ok, _, id = pcall(fn, itemID)
+        if ok then spellID = id end
+    end
+    itemSpellCache[itemID] = spellID or false
+    return spellID
+end
+
+local function IsValidItem(itemID)
+    local fn = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+    if not fn then return false end
+    local ok, id = pcall(fn, itemID)
+    return ok and id ~= nil
+end
+
+function Timeline.EntryName(id)
+    if id > 0 then return Timeline.SpellName(id) end
+    local itemID = -id
+    local fn = (C_Item and C_Item.GetItemNameByID) or nil
+    local name = fn and fn(itemID)
+    if not name then
+        local info = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+        if info then
+            local ok, n = pcall(info, itemID)
+            if ok and type(n) == "string" then name = n end
+        end
+    end
+    if not name and C_Item and C_Item.RequestLoadItemDataByID then
+        pcall(C_Item.RequestLoadItemDataByID, itemID)   -- el nombre llega después (GET_ITEM_INFO_RECEIVED)
+    end
+    return name
+end
+
+function Timeline.EntryIcon(id)
+    if id > 0 then return Timeline.SpellIcon(id) end
+    local itemID = -id
+    if C_Item and C_Item.GetItemIconByID then return C_Item.GetItemIconByID(itemID) end
+    local fn = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+    if fn then
+        local ok, _, _, _, _, icon = pcall(fn, itemID)
+        if ok then return icon end
+    end
+end
+
+local function ReadItemCooldown(itemID)
+    local fn = (C_Item and C_Item.GetItemCooldown) or (C_Container and C_Container.GetItemCooldown) or GetItemCooldown
+    if not fn then return nil, 0 end
+    local a, b = fn(itemID)
+    local start, duration = a, b
+    if type(a) == "table" then start, duration = a.startTime or a.start, a.duration end
+    if start and duration and duration > 0 and start > 0 then
+        return start + duration, duration
+    end
+    return nil, 0
+end
+
+-- Cooldown de una entrada de la lista (hechizo si el ID es positivo, objeto si es negativo).
+local function ReadCooldown(id)
+    if id > 0 then return ReadSpellCooldown(id) end
+    local itemID = -id
+    local expiration, duration = ReadItemCooldown(itemID)
+    if expiration then return expiration, duration end
+    -- si el objeto ya no está en las bolsas, su hechizo de uso conserva el cooldown
+    local spellID = ItemUseSpell(itemID)
+    if spellID then return ReadSpellCooldown(spellID) end
     return nil, 0
 end
 
@@ -150,7 +229,8 @@ local function Track(id)
         e = {}
         state[id] = e
     end
-    e.icon = Timeline.SpellIcon(id)
+    e.icon = Timeline.EntryIcon(id)
+    if id < 0 then e.useSpell = ItemUseSpell(-id) end
     return e
 end
 
@@ -209,7 +289,7 @@ local function Poll()
             end
         elseif castAt[id] and now - castAt[id] < 1 and not e.expiration then
             -- los datos están ocultos: se estima con el cooldown base
-            local base = BaseCooldown(id)
+            local base = BaseCooldown(id > 0 and id or e.useSpell)
             if base and base >= c.minCooldown then
                 e.expiration, e.duration, e.estimated = castAt[id] + base, base, true
                 e.warned = false
@@ -427,9 +507,17 @@ driver:SetScript("OnEvent", function(_, event, unit, _, spellID)
     elseif event == "PLAYER_REGEN_ENABLED" then
         inCombat = false
     elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
-        if unit == "player" and spellID then castAt[spellID] = GetTime() end
-    elseif event == "SPELLS_CHANGED" then
+        if unit == "player" and spellID then
+            local now = GetTime()
+            castAt[spellID] = now
+            for _, id in ipairs(cfg().spells) do
+                local e = state[id]
+                if id < 0 and e and e.useSpell == spellID then castAt[id] = now end
+            end
+        end
+    elseif event == "SPELLS_CHANGED" or event == "GET_ITEM_INFO_RECEIVED" then
         for _, id in ipairs(cfg().spells) do Track(id) end
+        if event == "GET_ITEM_INFO_RECEIVED" and ns.RefreshOptions then ns.RefreshOptions() end
     end
     dirty = true
 end)
@@ -441,7 +529,7 @@ local function SetEvents(on)
     driver:UnregisterAllEvents()
     if not on then return end
     for _, e in ipairs({ "SPELL_UPDATE_COOLDOWN", "SPELL_UPDATE_CHARGES", "SPELLS_CHANGED", "PLAYER_ENTERING_WORLD",
-      "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED" }) do
+      "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "GET_ITEM_INFO_RECEIVED" }) do
         local ok = pcall(driver.RegisterEvent, driver, e)
         if not ok then print(PREFIX .. string.format(L["Event not available: %s"], e)) end
     end
@@ -459,21 +547,35 @@ local function IndexOf(id)
     end
 end
 
--- Devuelve ok, mensaje.
-function Timeline.AddSpell(id)
+-- Agrega una entrada: ID positivo = hechizo, ID negativo = objeto. Devuelve ok, mensaje.
+function Timeline.AddEntry(id)
     id = tonumber(id)
-    if not id or id <= 0 or not Timeline.SpellName(id) then return false, L["Invalid spell ID."] end
+    if not id or id == 0 then return false, L["Invalid spell ID."] end
+    local isItem = id < 0
+    local valid = isItem and IsValidItem(-id) or (not isItem and Timeline.SpellName(id) ~= nil)
+    if not valid then return false, isItem and L["Invalid item ID."] or L["Invalid spell ID."] end
     local list = cfg().spells
     if IndexOf(id) then return false, L["That spell is already on the list."] end
-    if #list >= MAX_SPELLS then return false, string.format(L["The list is full (%d spells)."], MAX_SPELLS) end
+    if #list >= MAX_SPELLS then return false, string.format(L["The list is full (%d entries)."], MAX_SPELLS) end
     list[#list + 1] = id
     Track(id)
     dirty = true
     if ns.RefreshOptions then ns.RefreshOptions() end
-    return true, string.format(L["Spell '%s' added."], Timeline.SpellName(id))
+    local name = Timeline.EntryName(id) or ("#" .. math.abs(id))
+    return true, string.format(isItem and L["Item '%s' added."] or L["Spell '%s' added."], name)
 end
 
-function Timeline.RemoveSpell(id)
+function Timeline.AddSpell(id)
+    id = tonumber(id)
+    return Timeline.AddEntry(id and math.abs(id))
+end
+
+function Timeline.AddItem(id)
+    id = tonumber(id)
+    return Timeline.AddEntry(id and -math.abs(id))
+end
+
+function Timeline.RemoveEntry(id)
     id = tonumber(id)
     local i = id and IndexOf(id)
     if not i then return false, L["Invalid spell ID."] end
@@ -482,7 +584,17 @@ function Timeline.RemoveSpell(id)
     state[id] = nil
     dirty = true
     if ns.RefreshOptions then ns.RefreshOptions() end
-    return true, L["Spell removed."]
+    return true, L["Removed from the timeline."]
+end
+
+function Timeline.RemoveSpell(id)
+    id = tonumber(id)
+    return Timeline.RemoveEntry(id and math.abs(id))
+end
+
+function Timeline.RemoveItem(id)
+    id = tonumber(id)
+    return Timeline.RemoveEntry(id and -math.abs(id))
 end
 
 ---------------------------------------------------------------------------
@@ -526,7 +638,7 @@ function Timeline.ScanSpells()
         end)
         if not ok or not name then return end
         if (cd and cd >= minCD) or charges then
-            list[#list + 1] = { id = id, name = name, icon = Timeline.SpellIcon(id), cd = cd }
+            list[#list + 1] = { id = id, name = name, icon = Timeline.SpellIcon(id), cd = cd, kind = "spell" }
         end
     end
 
@@ -561,6 +673,56 @@ function Timeline.ScanSpells()
     return list
 end
 
+
+-- Hechizos de la clase + trinkets equipados con efecto de uso + pociones de las bolsas.
+-- Cada entrada: { id (negativo si es objeto), name, icon, cd, kind = "spell" | "trinket" | "potion" }.
+function Timeline.ScanEntries()
+    local list = Timeline.ScanSpells()
+
+    -- trinkets equipados (ranuras 13 y 14) que se pueden usar
+    for _, slot in ipairs({ 13, 14 }) do
+        local ok = pcall(function()
+            local itemID = GetInventoryItemID and GetInventoryItemID("player", slot)
+            local useSpell = itemID and ItemUseSpell(itemID)
+            if useSpell then
+                list[#list + 1] = {
+                    id = -itemID, kind = "trinket", cd = BaseCooldown(useSpell),
+                    name = Timeline.EntryName(-itemID) or ("Item " .. itemID), icon = Timeline.EntryIcon(-itemID),
+                }
+            end
+        end)
+        if not ok then break end
+    end
+
+    -- pociones en las bolsas (consumibles de tipo poción con efecto de uso)
+    local potions, seen = {}, {}
+    pcall(function()
+        local getSlots = (C_Container and C_Container.GetContainerNumSlots) or GetContainerNumSlots
+        local getItem = (C_Container and C_Container.GetContainerItemID) or GetContainerItemID
+        local instant = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+        if not (getSlots and getItem and instant) then return end
+        for bag = 0, (NUM_BAG_SLOTS or 4) + 1 do
+            for slot = 1, (getSlots(bag) or 0) do
+                local itemID = getItem(bag, slot)
+                if itemID and not seen[itemID] then
+                    seen[itemID] = true
+                    local _, _, _, _, _, classID, subClassID = instant(itemID)
+                    local useSpell = (classID == 0 and subClassID == 1) and ItemUseSpell(itemID)
+                    if useSpell then
+                        potions[#potions + 1] = {
+                            id = -itemID, kind = "potion", cd = BaseCooldown(useSpell),
+                            name = Timeline.EntryName(-itemID) or ("Item " .. itemID), icon = Timeline.EntryIcon(-itemID),
+                        }
+                    end
+                end
+            end
+        end
+    end)
+    table.sort(potions, function(a, b) return a.name < b.name end)
+    for _, p in ipairs(potions) do list[#list + 1] = p end
+    return list
+end
+
 ---------------------------------------------------------------------------
 -- Aplicar configuración
 ---------------------------------------------------------------------------
@@ -590,6 +752,12 @@ function Timeline.Slash(arg)
     elseif cmd == "remove" then
         local _, msg = Timeline.RemoveSpell(rest)
         print(PREFIX .. msg)
+    elseif cmd == "additem" then
+        local _, msg = Timeline.AddItem(rest)
+        print(PREFIX .. msg)
+    elseif cmd == "removeitem" then
+        local _, msg = Timeline.RemoveItem(rest)
+        print(PREFIX .. msg)
     elseif cmd == "pick" then
         if ns.OpenSpellPicker then ns.OpenSpellPicker() end
     elseif cmd == "sound" and rest ~= "" then
@@ -599,10 +767,10 @@ function Timeline.Slash(arg)
     elseif cmd == "list" then
         local names = {}
         for _, id in ipairs(cfg().spells) do
-            names[#names + 1] = (Timeline.SpellName(id) or "?") .. " (" .. id .. ")"
+            names[#names + 1] = (Timeline.EntryName(id) or "?") .. " (" .. (id < 0 and ("item " .. -id) or id) .. ")"
         end
-        print(PREFIX .. string.format(L["Tracked spells: %s"], #names > 0 and table.concat(names, ", ") or "-"))
+        print(PREFIX .. string.format(L["On the timeline: %s"], #names > 0 and table.concat(names, ", ") or "-"))
     else
-        print(PREFIX .. L["Usage: /modi timeline pick | add <spellID> | remove <spellID> | list | sound <soundkitID or file path>"])
+        print(PREFIX .. L["Usage: /modi timeline pick | add <spellID> | addItem <itemID> | remove <spellID> | removeItem <itemID> | list | sound <soundkitID or file path>"])
     end
 end

@@ -274,8 +274,8 @@ local function Sanitize(value, default)
                 local isKey = type(k) == "number" or type(k) == "string"
                 if isKey and type(v) == "boolean" then
                     out[k] = v
-                elseif type(k) == "number" and type(v) == "number" and v > 0 and v < 10000000 then
-                    out[k] = v   -- listas de spellIDs
+                elseif type(k) == "number" and type(v) == "number" and v ~= 0 and math.abs(v) < 10000000 then
+                    out[k] = v   -- listas de IDs (negativo = objeto)
                 elseif type(k) == "number" and type(v) == "table" then
                     -- ajustes por hechizo (p. ej. timeline.spellSounds): solo textos y números simples
                     local inner = {}

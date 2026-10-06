@@ -13,7 +13,7 @@ Interfaz en **English** y **Español (MX)**, perfiles exportables por código y 
 | **Alerta de threat** | Muestra un texto (personalizable, con sonido) cuando estás perdiendo el aggro de un mob. |
 | **Brez en una tecla** | Convierte una tecla (aunque ya la uses) en el brez de tu clase mientras el mouse está sobre un aliado muerto. |
 | **CD Timeline** | Línea de tiempo (horizontal o vertical) con los cooldowns que elijas: hechizos, trinkets y pociones. Detecta los de tu clase, con avisos y sonidos por elemento. |
-| **Prepot** | Ícono con el tiempo restante de la poción que usaste, y un sonido (voz) cuando su cooldown vuelve a estar listo. |
+| **Prepot/Trinket** | Ícono con el tiempo restante de la poción que usaste, y sonidos (voz) cuando el cooldown de tu poción, tu poción de HP o los trinkets que elijas vuelve a estar listo. |
 | **Perfiles** | Guarda, cambia y comparte tu configuración por código (importar / exportar con nombre). |
 
 ## Instalación

@@ -73,16 +73,29 @@ end
 -- Detección
 ---------------------------------------------------------------------------
 
-local units = { "target", "focus" }
-for i = 1, 5 do units[#units + 1] = "boss" .. i end
-for i = 1, 40 do units[#units + 1] = "nameplate" .. i end
+local FIXED_UNITS = { "target", "focus", "boss1", "boss2", "boss3", "boss4", "boss5" }
+local units = {}            -- se reutiliza en cada escaneo (sin crear tablas nuevas)
+
+-- Unidades a revisar: las fijas + las nameplates que existen ahora (no las 40 posibles).
+local function CollectUnits()
+    wipe(units)
+    for i = 1, #FIXED_UNITS do units[#units + 1] = FIXED_UNITS[i] end
+    if C_NamePlate and C_NamePlate.GetNamePlates then
+        local plates = C_NamePlate.GetNamePlates()
+        for i = 1, #plates do
+            local token = plates[i].namePlateUnitToken
+            if token then units[#units + 1] = token end
+        end
+    end
+    return units
+end
 
 local last = {}          -- [unit] = último estado de threat conocido
 local alertUntil = 0
 local lastSound = -10
 local mobName
 local inCombat = false
-local dirty = false
+local eventsOn = false
 local warned = false
 
 local function IsTank()
@@ -105,6 +118,8 @@ local function PlayAlertSound()
     ns.PlaySoundKey(c.soundKey, c.soundCustom)
 end
 
+local SyncDriver   -- (definida en la sección de actualización)
+
 local function SetAlert(duration, unit)
     local c = cfg()
     local now = GetTime()
@@ -115,6 +130,7 @@ local function SetAlert(duration, unit)
         mobName = ok and name or nil
     end
     if not wasActive then PlayAlertSound() end
+    SyncDriver()
 end
 
 local function ScanUnits()
@@ -124,8 +140,13 @@ local function ScanUnits()
         return
     end
     local losing, lost, mob
-    for _, unit in ipairs(units) do
-        if UnitExists(unit) and UnitCanAttack("player", unit) and UnitAffectingCombat(unit) then
+    local list = CollectUnits()
+    local Secrets = ns.Secrets
+    for i = 1, #list do
+        local unit = list[i]
+        if Secrets.ThreatIsSecret("player", unit) == true then
+            last[unit] = nil     -- threat oculto (Mythic+/encuentro): no se puede leer
+        elseif UnitExists(unit) and UnitCanAttack("player", unit) and UnitAffectingCombat(unit) then
             -- 0 = sin threat, 1 = más que el tank sin tener aggro, 2 = aggro inestable, 3 = aggro seguro
             local status = UnitThreatSituation("player", unit) or 0
             local prev = last[unit]
@@ -159,18 +180,11 @@ end
 ---------------------------------------------------------------------------
 
 local driver = CreateFrame("Frame")
-local elapsed = 0
 
-driver:SetScript("OnUpdate", function(_, dt)
+-- Animación del aviso: el OnUpdate solo existe mientras hay algo que mostrar (alerta activa o marco desbloqueado).
+local function Animate()
     local c = cfg()
     local now = GetTime()
-
-    elapsed = elapsed + dt
-    if inCombat and (dirty or elapsed >= 0.2) then
-        elapsed, dirty = 0, false
-        Scan()
-    end
-
     local active = now < alertUntil
     if active or c.unlocked then
         if active and mobName and c.showMob then
@@ -182,27 +196,66 @@ driver:SetScript("OnUpdate", function(_, dt)
         frame:SetAlpha(c.alpha * (c.flash and (0.65 + 0.35 * math.sin(now * 8)) or 1))
     else
         frame:Hide()
+        driver:SetScript("OnUpdate", nil)
     end
-end)
+end
+
+SyncDriver = function()
+    local c = cfg()
+    if GetTime() < alertUntil or c.unlocked then
+        driver:SetScript("OnUpdate", Animate)
+    else
+        driver:SetScript("OnUpdate", nil)
+    end
+    Animate()
+end
+
+-- Escaneo con debounce: varios eventos seguidos producen una sola lectura.
+local scanQueued = false
+local function QueueScan()
+    if scanQueued then return end
+    scanQueued = true
+    C_Timer.After(0.1, function()
+        scanQueued = false
+        if inCombat and eventsOn then
+            Scan()
+            SyncDriver()
+        end
+    end)
+end
+
+-- Respaldo mientras dura el combate (por si algún cambio no emite evento); se cancela al salir.
+local ticker
+local function StartTicker()
+    if ticker then return end
+    ticker = C_Timer.NewTicker(0.5, function()
+        Scan()
+        SyncDriver()
+    end)
+end
+local function StopTicker()
+    if ticker then ticker:Cancel(); ticker = nil end
+end
 
 driver:SetScript("OnEvent", function(_, event)
     if event == "PLAYER_REGEN_DISABLED" then
         inCombat = true
-        dirty = true
+        StartTicker()
+        QueueScan()
     elseif event == "PLAYER_REGEN_ENABLED" then
         inCombat = false
+        StopTicker()
         wipe(last)
     elseif event == "UNIT_THREAT_SITUATION_UPDATE" or event == "UNIT_THREAT_LIST_UPDATE" then
-        dirty = true
+        QueueScan()
     end
 end)
 
-local eventsOn = false
 local function SetEvents(on)
     if on == eventsOn then return end
     eventsOn = on
     driver:UnregisterAllEvents()
-    if not on then return end
+    if not on then StopTicker(); inCombat = false; return end
     for _, e in ipairs({
         "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED",
         "UNIT_THREAT_SITUATION_UPDATE", "UNIT_THREAT_LIST_UPDATE",
@@ -211,6 +264,7 @@ local function SetEvents(on)
         if not ok then print(PREFIX .. string.format(L["Event not available: %s"], e)) end
     end
     inCombat = UnitAffectingCombat("player") and true or false
+    if inCombat then StartTicker(); QueueScan() end
 end
 
 ---------------------------------------------------------------------------
@@ -243,6 +297,7 @@ function Threat.Apply()
         alertUntil = 0
         wipe(last)
     end
+    SyncDriver()
 end
 
 function Threat.Slash(arg)

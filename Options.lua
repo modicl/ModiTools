@@ -409,7 +409,7 @@ local function CreateCheck(panel, x, y, text, get, set, help)
     return function()
         checked = get() and true or false
         paint()
-    end
+    end, label, box
 end
 
 local function NewBuilder(panel)
@@ -444,6 +444,19 @@ local function NewBuilder(panel)
         line:SetPoint("TOPLEFT", x, y - 22)
         line:SetSize(262, 1)
         line:SetColorTexture(rgb(C.light, 0.45))
+    end
+
+    -- Casilla cuyo texto se actualiza al refrescar (p. ej. con el nombre del objeto equipado).
+    function b:CheckDynamic(textFn, get, set)
+        local x, y = self:Next()
+        local refresh, label, box = CreateCheck(panel, x, y, textFn(), get, set)
+        label:SetWidth(236)
+        label:SetWordWrap(false)
+        self.refreshers[#self.refreshers + 1] = function()
+            refresh()
+            label:SetText(textFn())
+            box:SetHitRectInsets(0, -(math.min(label:GetStringWidth(), 236) + 10), 0, 0)
+        end
     end
 
     function b:Check(text, get, set, help)
@@ -860,6 +873,7 @@ end
 ns.globalDefaults.window = { point = "CENTER", x = 0, y = 0 }
 
 local win
+local EnsureBuilt   -- construye la ventana y sus páginas la primera vez que se necesitan
 local pages = {}      -- [key] = { frame, nav, module }
 ns._pages = pages   -- solo para pruebas
 local pageOrder = {}
@@ -881,6 +895,7 @@ local function RefreshNav()
 end
 
 function ns.RefreshOptions()
+    if not win then return end   -- ventana aún sin construir: no hay nada que refrescar
     for _, b in ipairs(builders) do b:Refresh() end
     if win then RefreshNav() end
 end
@@ -1047,7 +1062,7 @@ local function BuildHome()
         .. "- " .. L["Threat alert: warning when you lose aggro."] .. "\n"
         .. "- " .. L["Brez: combat res on a key."] .. "\n"
         .. "- " .. L["CD Timeline: upcoming cooldowns of your spells."] .. "\n"
-        .. "- " .. L["Prepot: time left on the potion you used."] .. "\n\n"
+        .. "- " .. L["Prepot/Trinket: potion timer, plus ready sounds for potions and trinkets."] .. "\n\n"
         .. L["The dot next to each tool shows whether it is enabled."],
         12, C.text)
     intro:SetPoint("TOPLEFT", version, "BOTTOMLEFT", 0, -28)
@@ -1124,18 +1139,21 @@ local function BuildWindow()
 end
 
 function ns.OpenWindow(page)
+    EnsureBuilt()
     if not win then return end
     win:Show()
     SelectPage(page or win.current or "home")
 end
 
 function ns.ToggleWindow()
+    EnsureBuilt()
     if not win then return end
     if win:IsShown() then win:Hide() else ns.OpenWindow() end
 end
 
 ---------------------------------------------------------------------------
--- Selector de hechizos de la clase (para la línea de cooldowns)
+-- Selector genérico de elementos (hechizos, objetos, pociones). Cada uso le pasa una "fuente":
+-- { title, hint, empty, scan(), isOn(entry), toggle(entry) -> ok, mensaje, status() }
 ---------------------------------------------------------------------------
 
 local picker
@@ -1156,7 +1174,7 @@ local function RefreshPicker()
     local total = #p.visible
     local maxOffset = math.max(0, total - PICK_ROWS)
     p.offset = math.max(0, math.min(p.offset, maxOffset))
-    local module = ns.modules.timeline
+    local src = p.source
 
     for i = 1, PICK_ROWS do
         local row = p.rows[i]
@@ -1170,7 +1188,7 @@ local function RefreshPicker()
             if spell.kind == "trinket" then detail = L["Trinket"] .. "  ·  " .. detail
             elseif spell.kind == "potion" then detail = L["Potion"] .. "  ·  " .. detail end
             row.detail:SetText(detail)
-            row.mark:SetShown(module.IsTracked(spell.id))
+            row.mark:SetShown(src.isOn(spell))
             row:Show()
         else
             row.spell = nil
@@ -1185,8 +1203,9 @@ local function RefreshPicker()
         p.scroll.loading = false
     end
     p.scroll:SetShown(maxOffset > 0)
+    p.empty:SetText(src.empty and src.empty() or L["No spells found."])
     p.empty:SetShown(total == 0)
-    p.status:SetText(string.format(L["%d of %d on the timeline"], #ns.db.timeline.spells, module.MaxSpells))
+    p.status:SetText(src.status())
 end
 
 local function FilterPicker()
@@ -1224,13 +1243,13 @@ local function BuildPicker()
     bar:RegisterForDrag("LeftButton")
     bar:SetScript("OnDragStart", function() p:StartMoving() end)
     bar:SetScript("OnDragStop", function() p:StopMovingOrSizing() end)
-    local title = Label(bar, L["Pick from my spells and items"], 15, C.accent)
-    title:SetPoint("LEFT", 14, 0)
+    p.title = Label(bar, "", 15, C.accent)
+    p.title:SetPoint("LEFT", 14, 0)
     local close = CreateButton(bar, "X", 24, 20, function() p:Hide() end)
     close:SetPoint("RIGHT", -8, 0)
 
-    local hint = Label(p, L["Click an entry to add or remove it."], 11, C.muted)
-    hint:SetPoint("TOPLEFT", 14, -40)
+    p.hint = Label(p, "", 11, C.muted)
+    p.hint:SetPoint("TOPLEFT", 14, -40)
 
     local search = CreateFrame("EditBox", nil, p)
     search:SetPoint("TOPLEFT", 14, -62)
@@ -1285,13 +1304,7 @@ local function BuildPicker()
         row:SetScript("OnClick", function(self)
             local spell = self.spell
             if not spell then return end
-            local module = ns.modules.timeline
-            local ok, msg
-            if module.IsTracked(spell.id) then
-                ok, msg = module.RemoveEntry(spell.id)
-            else
-                ok, msg = module.AddEntry(spell.id)
-            end
+            local _, msg = picker.source.toggle(spell)
             if msg then print(ns.PREFIX .. msg) end
             RefreshPicker()
         end)
@@ -1330,7 +1343,7 @@ local function BuildPicker()
     done:SetPoint("BOTTOMRIGHT", -14, 10)
 
     p:SetScript("OnShow", function()
-        p.spells = ns.modules.timeline.ScanEntries()
+        p.spells = p.source.scan()
         p.search:SetText("")
         p.placeholder:Show()
         FilterPicker()
@@ -1339,12 +1352,63 @@ local function BuildPicker()
     return p
 end
 
-function ns.OpenSpellPicker()
+-- Abre el selector con la fuente indicada (si ya está abierto con esa misma fuente, lo cierra).
+function ns.OpenPicker(source)
     local p = picker or BuildPicker()
-    if p:IsShown() then p:Hide() else p:Show() end
+    if p:IsShown() and p.source == source then
+        p:Hide()
+        return
+    end
+    p.source = source
+    p.title:SetText(source.title())
+    p.hint:SetText(source.hint())
+    if p:IsShown() then
+        p.spells = source.scan()
+        p.search:SetText("")
+        p.placeholder:Show()
+        FilterPicker()
+    else
+        p:Show()
+    end
 end
 
-function ns.CreateOptions()
+-- Fuentes del selector
+local timelineSource = {
+    title = function() return L["Pick from my spells and items"] end,
+    hint = function() return L["Click an entry to add or remove it."] end,
+    scan = function() return ns.modules.timeline.ScanEntries() end,
+    isOn = function(e) return ns.modules.timeline.IsTracked(e.id) end,
+    toggle = function(e)
+        local m = ns.modules.timeline
+        if m.IsTracked(e.id) then return m.RemoveEntry(e.id) end
+        return m.AddEntry(e.id)
+    end,
+    status = function()
+        return string.format(L["%d of %d on the timeline"], #ns.db.timeline.spells, ns.modules.timeline.MaxSpells)
+    end,
+}
+
+local healingSource = {
+    title = function() return L["Choose your healing potions"] end,
+    hint = function() return L["Click a potion to mark it as a healing potion, or click again to unmark it."] end,
+    empty = function() return L["No potions found yet. Keep a potion in your bags."] end,
+    scan = function() return ns.modules.prepot.ScanPotions() end,
+    isOn = function(e) return ns.modules.prepot.IsHealingPotion(e.id) end,
+    toggle = function(e)
+        local m = ns.modules.prepot
+        local becomes = not m.IsHealingPotion(e.id)
+        m.SetHealing(e.id, becomes)
+        return true, string.format(becomes and L["'%s' marked as a healing potion."] or L["'%s' marked as a combat potion."], e.name)
+    end,
+    status = function() return string.format(L["%d potions marked as healing"], ns.modules.prepot.HealingCount()) end,
+}
+
+function ns.OpenSpellPicker()
+    EnsureBuilt()
+    ns.OpenPicker(timelineSource)
+end
+
+local function BuildAll()
     ns.LocalizeSounds()
     BuildWindow()
     BuildHome()
@@ -1506,7 +1570,8 @@ function ns.CreateOptions()
     end, 5)
     bb:Button(L["Restore defaults"], function() ns.ResetModule("brez") end)
 
-    -- Prepot
+    -- Prepot/Trinket: entrada principal + dos subpáginas (Prepot y Trinket), para no mezclar el ícono
+    -- de la poción con los sonidos de los trinkets.
     local posOptions = {
         { value = "CENTER", label = L["Center"] },
         { value = "BOTTOM", label = L["Below"] },
@@ -1515,28 +1580,84 @@ function ns.CreateOptions()
     local prepotSounds = {}
     for i, e in ipairs(ns.FocusSounds) do prepotSounds[i] = e end
     prepotSounds.preview = function(v) ns.PlaySoundKey(v, ns.db.prepot.soundCustom) end
-    local pb = MakePage("prepot", L["Prepot"], L["Icon with the time left on the potion you used."], "prepot")
-    GeneralSection(pb, "prepot")
-    pb:Header(L["Appearance"])
-    pb:Slider(L["Icon size"], 24, 128, 2, Bind("prepot", "iconSize"))
-    pb:Slider(L["Opacity"], 0.2, 1, 0.05, Bind("prepot", "alpha"))
-    pb:Slider(L["Font size"], 8, 40, 1, Bind("prepot", "fontSize"))
-    pb:Slider(L["Warn at (s)"], 0, 30, 1, Bind("prepot", "warnAt"))
-    pb:Cycle(L["Time position"], posOptions, Bind("prepot", "textPos"))
-    pb:Header(L["Sound"])
-    pb:Check(L["Sound when the potion is ready"], Bind("prepot", "soundReady"))
-    pb:Cycle(L["Ready sound"], prepotSounds, Bind("prepot", "soundReadyKey"))
-    pb:Button(L["Test (30 s)"], function() ns.modules.prepot.Slash("test") end)
+
+    -- Página principal: qué incluye y activar
+    local pb = MakePage("prepot", L["Prepot/Trinket"],
+        L["Two tools in one: a potion timer with a ready sound, and a ready sound for your trinkets."], "prepot")
+    pb:Header(L["General"])
+    pb:Check(L["Enable"], Bind("prepot", "enabled"))
+    pb:Header(L["What's inside"])
+    pb:Info(function()
+        local g = "|cffc4b550"
+        return g .. L["Prepot"] .. "|r  "
+            .. L["Shows an icon with the time left on the potion you used, and plays a sound when the potion is ready again."]
+            .. "\n\n" .. g .. L["HP potion"] .. "|r  "
+            .. L["Plays a sound when your healing potion is ready again."]
+            .. "\n\n" .. g .. L["Trinket"] .. "|r  "
+            .. L["Plays a sound when the trinkets you choose are ready again. It has no icon."]
+            .. "\n\n" .. L["Open each one with the + next to Prepot/Trinket on the left."]
+    end, 11)
     pb:Button(L["Restore defaults"], function() ns.ResetModule("prepot") end)
-    pb:NewColumn()
-    pb:Header(L["Elements"])
-    pb:Check(L["Show time"], Bind("prepot", "showText"))
-    pb:Check(L["Cooldown swirl"], Bind("prepot", "showSwirl"))
-    pb:Check(L["Show border"], Bind("prepot", "showBorder"))
-    pb:Header(L["Colors"])
-    pb:Color(L["Text"], "prepot", "colorText")
-    pb:Color(L["Warning text"], "prepot", "colorWarn")
-    pb:Color(L["Border"], "prepot", "colorBorder", true)
+
+    -- Subpágina Prepot: ícono de la poción y su sonido
+    local pi = MakePage("prepot_icon", L["Prepot"],
+        L["Icon with the time left on the potion you used, and a sound when the potion is ready again."], nil,
+        { parent = "prepot", label = L["Prepot"] })
+    pi:Header(L["Icon"])
+    pi:Check(L["Preview / unlock to move the icon"], Bind("prepot", "unlocked"))
+    pi:Header(L["Appearance"])
+    pi:Slider(L["Icon size"], 24, 128, 2, Bind("prepot", "iconSize"))
+    pi:Slider(L["Opacity"], 0.2, 1, 0.05, Bind("prepot", "alpha"))
+    pi:Slider(L["Font size"], 8, 40, 1, Bind("prepot", "fontSize"))
+    pi:Slider(L["Warn at (s)"], 0, 30, 1, Bind("prepot", "warnAt"))
+    pi:Cycle(L["Time position"], posOptions, Bind("prepot", "textPos"))
+    pi:Button(L["Test (30 s)"], function() ns.modules.prepot.Slash("test") end)
+    pi:NewColumn()
+    pi:Header(L["Elements"])
+    pi:Check(L["Show time"], Bind("prepot", "showText"))
+    pi:Check(L["Cooldown swirl"], Bind("prepot", "showSwirl"))
+    pi:Check(L["Show border"], Bind("prepot", "showBorder"))
+    pi:Header(L["Colors"])
+    pi:Color(L["Text"], "prepot", "colorText")
+    pi:Color(L["Warning text"], "prepot", "colorWarn")
+    pi:Color(L["Border"], "prepot", "colorBorder", true)
+    pi:Header(L["Potion ready sound"])
+    pi:Check(L["Sound when the potion is ready"], Bind("prepot", "soundReady"))
+    pi:Cycle(L["Ready sound"], prepotSounds, Bind("prepot", "soundReadyKey"))
+
+    -- Subpágina Poción de HP: sonido y cuáles son tus pociones de vida
+    local ph = MakePage("prepot_hp", L["HP potion"],
+        L["Plays a sound when your healing potion is ready again. Its cooldown is separate from your other potions."], nil,
+        { parent = "prepot", label = L["HP potion"] })
+    ph:Header(L["Healing potion ready sound"])
+    ph:Check(L["Sound when the healing potion is ready"], Bind("prepot", "healingSound"))
+    ph:Cycle(L["Ready sound"], prepotSounds, Bind("prepot", "healingSoundKey"))
+    ph:Header(L["Which potions are healing potions"])
+    ph:Button(L["Choose healing potions"], function() ns.OpenPicker(healingSource) end)
+    ph:Info(function()
+        return L["Healing potions are detected by their name. If yours is not detected (or a combat potion is mistaken for one), pick it here."]
+            .. "\n\n" .. L["Healing potions have their own cooldown, separate from your other potions."]
+    end, 7)
+
+    -- Subpágina Trinket: sonido y qué trinkets vigilar
+    local pt = MakePage("trinket", L["Trinket"],
+        L["Plays a sound when the trinkets you choose are ready again."], nil,
+        { parent = "prepot", label = L["Trinket"] })
+    pt:Header(L["Trinket ready sound"])
+    pt:Check(L["Sound when a trinket is ready"], Bind("prepot", "trinketSound"))
+    pt:Cycle(L["Ready sound"], prepotSounds, Bind("prepot", "trinketSoundKey"))
+    pt:Header(L["Which trinkets to watch"])
+    for _, slot in ipairs({ 13, 14 }) do
+        pt:CheckDynamic(function() return ns.modules.prepot.TrinketLabel(slot) end,
+            function() return ns.db.prepot.trinketSlots[slot] end,
+            function(v)
+                ns.db.prepot.trinketSlots[slot] = v
+                ns.modules.prepot.Apply()
+            end)
+    end
+    pt:Info(function()
+        return L["Pick the trinkets to watch. When you use one, the sound plays as soon as its cooldown ends. Only trinkets with an on-use effect work."]
+    end, 4)
 
     -- Línea de tiempo de cooldowns
     local tlStatus, tlSpellField, tlKind = "", "", "spell"
@@ -1552,7 +1673,7 @@ function ns.CreateOptions()
         { value = "V", label = L["Vertical"] },
     }
     tl:Header(L["Add to the timeline"])
-    tl:Button(L["Pick from my spells and items"], function() ns.OpenSpellPicker() end)
+    tl:Button(L["Pick from my spells and items"], function() ns.OpenPicker(timelineSource) end)
     tl:Cycle(L["Type"], kindOptions, function() return tlKind end, function(v) tlKind = v end)
     tl:Input(L["ID"], function() return tlSpellField end, function(v) tlSpellField = v end, true)
     tl:Button(L["Add"], function()
@@ -1769,6 +1890,19 @@ function ns.CreateOptions()
         end
     end)
 
+    SelectPage("home")
+end
+
+EnsureBuilt = function()
+    if win then return end
+    BuildAll()
+end
+ns.BuildOptions = EnsureBuilt
+
+-- Al cargar solo se registra la entrada del menú de AddOns de Blizzard (liviana).
+-- La ventana completa (cientos de widgets) se construye al abrirla por primera vez.
+function ns.CreateOptions()
+    ns.LocalizeSounds()
     -- Entrada en el menú de AddOns de Blizzard: solo abre la ventana propia.
     local stub = CreateFrame("Frame")
     stub.name = "ModiTools"
@@ -1788,6 +1922,4 @@ function ns.CreateOptions()
     elseif InterfaceOptions_AddCategory then
         InterfaceOptions_AddCategory(stub)
     end
-
-    SelectPage("home")
 end

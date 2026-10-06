@@ -3,6 +3,7 @@
 local _, ns = ...
 local PREFIX = ns.PREFIX
 local L = ns.L
+local Secrets = ns.Secrets
 
 local TEXTURES = {
     Blizzard = "Interface\\TargetingFrame\\UI-StatusBar",
@@ -48,6 +49,10 @@ do
     add({ header = true, en = "ModiTools" })
     add({ value = "mt_potion_ready", en = "Potion ready (voice)",
           file = "Interface\\AddOns\\ModiTools\\Media\\potion_ready.mp3" })
+    add({ value = "mt_trinket_ready", en = "Trinket ready (voice)",
+          file = "Interface\\AddOns\\ModiTools\\Media\\trinket_ready.mp3" })
+    add({ value = "mt_healing_potion_ready", en = "Healing potion ready (voice)",
+          file = "Interface\\AddOns\\ModiTools\\Media\\healing_potion_ready.mp3" })
 
     add({ header = true, en = "Classic" })
     add({ value = "raid", en = "Raid warning", id = 8959 })
@@ -173,6 +178,7 @@ local function UpdateCastClassic()
         -- primero los cálculos: si los datos son secretos, falla aquí sin tocar el estado
         local startS, endS = startMS / 1000, endMS / 1000
         cast.timer = false
+        cast.preview = false
         cast.active = true
         cast.channel = isChannel
         cast.start = startS
@@ -193,24 +199,24 @@ local function UpdateCastClassic()
     end
 end
 
--- Ruta para contenido restringido (Mythic+, raids, combate): nombre, ícono y tiempos son valores
--- "secretos" que NO se pueden comparar ni usar en un `if`. Por eso:
---   * que haya un casteo se sabe por la existencia del objeto de duración (nunca es secreto),
---   * nombre e ícono se pasan directo a los widgets,
+-- Ruta para contenido restringido (Mythic+, raids, combate). Nombre, ícono y tiempos son valores "secretos":
+-- no se pueden comparar, hacer cuentas ni usar en un `if`. Por eso aquí NO se mira ningún valor:
+--   * que haya un casteo se sabe por si la función de duración devolvió algo (Secrets.CastDuration);
+--   * nombre e ícono van directo a los widgets; "no interrumpible" con SetAlphaFromBoolean;
 --   * el progreso lo anima el propio StatusBar con SetTimerDuration.
-local function UpdateCastTimer()
-    local c = cfg()
-    local isChannel = false
-    local dur = UnitCastingDuration and UnitCastingDuration("focus")
-    if not dur then
-        isChannel = true
-        dur = UnitChannelDuration and UnitChannelDuration("focus")
+-- Sin casteo: se oculta la barra (salvo la vista previa o el aviso de interrupción en curso).
+local function NoCast(c)
+    cast.timer = false
+    if not c.unlocked and GetTime() >= failedUntil then
+        frame:Hide()
     end
-    if not dur then
-        cast.timer = false
-        if not c.unlocked and GetTime() >= failedUntil then
-            frame:Hide()
-        end
+end
+
+local function UpdateCastSecret()
+    local c = cfg()
+    local isChannel, dur = Secrets.CastDuration("focus")
+    if isChannel == nil then
+        NoCast(c)
         return
     end
 
@@ -222,16 +228,24 @@ local function UpdateCastTimer()
     end
     local dirs = Enum and Enum.StatusBarTimerDirection
     local interp = Enum and Enum.StatusBarInterpolation and Enum.StatusBarInterpolation.Immediate
-    local dir = dirs and (isChannel and dirs.RemainingTime or dirs.ElapsedTime)
+    local dir
+    if dirs then
+        if isChannel then dir = dirs.RemainingTime else dir = dirs.ElapsedTime end
+    end
+    -- si el StatusBar no acepta el objeto (no había casteo), se trata como "sin casteo"
+    if not pcall(bar.SetTimerDuration, bar, dur, interp, dir) then
+        NoCast(c)
+        return
+    end
 
     pcall(icon.SetTexture, icon, tex)
     pcall(nameText.SetText, nameText, name)
     timeText:SetText("")
-    bar:SetTimerDuration(dur, interp, dir)
     SetBarColor(isChannel and c.colorChannel or c.colorCast)
     SetLockedOverlay(lockedTex, notInt)
     cast.active = false
     cast.timer = true
+    cast.preview = false
     failedUntil = 0
     frame:Show()
 end
@@ -239,8 +253,9 @@ end
 local warned = false
 local function UpdateCast()
     if not cfg().enabled then return end
-    if pcall(UpdateCastClassic) then return end
-    local ok, err = pcall(UpdateCastTimer)
+    -- la API oficial indica si los datos de este focus vendrán secretos: true = ruta segura directa
+    if Secrets.CastIsSecret("focus") ~= true and pcall(UpdateCastClassic) then return end
+    local ok, err = pcall(UpdateCastSecret)
     if not ok and not warned then
         warned = true
         print(PREFIX .. string.format(L["Could not read the focus cast: %s"], tostring(err)))
@@ -250,6 +265,7 @@ end
 local function ShowFailed(text)
     cast.active = false
     cast.timer = false
+    cast.preview = false
     failedUntil = GetTime() + 0.8
     nameText:SetText(text)
     timeText:SetText("")
@@ -262,6 +278,7 @@ end
 
 -- Vista previa para poder ubicar y personalizar la barra mientras está desbloqueada.
 function ShowPreview()
+    cast.preview = true
     icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
     nameText:SetText(L["Focus cast"])
     timeText:SetText("1.5")
@@ -287,12 +304,17 @@ local function OnUpdate()
             return
         end
         bar:SetValue(cast.channel and remaining or (now - cast.start))
-        timeText:SetText(string.format("%.1f", remaining))
+        -- el texto solo se reescribe cuando cambia la décima de segundo
+        local tenths = math.floor(remaining * 10)
+        if tenths ~= cast.lastTenths then
+            cast.lastTenths = tenths
+            timeText:SetText(string.format("%.1f", remaining))
+        end
     elseif failedUntil > 0 and now >= failedUntil then
         failedUntil = 0
         UpdateCast()
         if c.unlocked and not cast.active and not cast.timer then ShowPreview() end
-    elseif c.unlocked and failedUntil == 0 and not cast.timer then
+    elseif c.unlocked and failedUntil == 0 and not cast.timer and not cast.preview then
         ShowPreview()
     end
 end
@@ -302,6 +324,8 @@ end
 ---------------------------------------------------------------------------
 
 local lastSound = 0
+
+local fileWarned = {}
 
 -- Reproduce un sonido de la lista (o uno personalizado: soundkit ID o ruta de archivo).
 function ns.PlaySoundKey(key, custom)
@@ -317,7 +341,13 @@ function ns.PlaySoundKey(key, custom)
     if snd and snd.id then
         PlaySound(snd.id, "Master")
     elseif snd and snd.file then
-        PlaySoundFile(snd.file, "Master")
+        -- PlaySoundFile devuelve false si el archivo no existe o el juego aún no lo conoce
+        -- (un archivo nuevo se reconoce al reiniciar el juego, no con /reload)
+        local willPlay = PlaySoundFile(snd.file, "Master")
+        if willPlay == false and not fileWarned[snd.file] then
+            fileWarned[snd.file] = true
+            print(PREFIX .. L["Could not play the sound file. If you just added it, restart the game (a /reload is not enough)."])
+        end
     end
 end
 

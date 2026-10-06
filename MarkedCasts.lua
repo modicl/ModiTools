@@ -191,6 +191,8 @@ local function Layout()
     end
 end
 
+local SyncUpdate   -- (definida más abajo) activa/desactiva el OnUpdate según haya barras
+
 local function ResetBar(f)
     f.unit, f.mode, f.channel = nil, nil, nil
     f.result, f.resultUntil, f.pendingEnd, f.pendingKind, f.announceAt = nil, nil, nil, nil, nil
@@ -204,6 +206,7 @@ local function Release(f)
     if f.unit and byUnit[f.unit] == f then byUnit[f.unit] = nil end
     ResetBar(f)
     f:Hide()
+    SyncUpdate()
     Layout()
 end
 
@@ -221,6 +224,7 @@ local function Acquire(unit)
             f.unit = unit
             byUnit[unit] = f
             active[#active + 1] = f
+            SyncUpdate()
             return f
         end
     end
@@ -255,18 +259,15 @@ local function FillClassic(f, unit)
     return true
 end
 
--- Ruta para contenido restringido (Mythic+, raids, combate): los datos del casteo son "secretos" y no
--- se pueden comparar ni usar en un `if`. Que haya un casteo se sabe por la existencia del objeto de
--- duración; nombre e ícono van directo a los widgets; el StatusBar anima el progreso por sí solo.
-local function FillTimer(f, unit)
+-- Ruta para contenido restringido (Mythic+, raids, combate). Los datos del casteo son "secretos": no se pueden
+-- comparar, hacer cuentas ni usar en un `if`. Por eso aquí NO se mira ningún valor:
+--   * que haya un casteo se sabe por si la función de duración devolvió algo (select("#"));
+--   * nombre y notInterruptible van directo a los widgets (SetText / SetAlphaFromBoolean);
+--   * el progreso lo anima el propio StatusBar con SetTimerDuration.
+local function FillSecret(f, unit)
     local c = cfg()
-    local isChannel = false
-    local dur = UnitCastingDuration and UnitCastingDuration(unit)
-    if not dur then
-        isChannel = true
-        dur = UnitChannelDuration and UnitChannelDuration(unit)
-    end
-    if not dur then return false end
+    local isChannel, dur = ns.Secrets.CastDuration(unit)
+    if isChannel == nil then return false end   -- no está casteando
 
     local name, notInt
     if isChannel then
@@ -276,15 +277,19 @@ local function FillTimer(f, unit)
     end
     local dirs = Enum and Enum.StatusBarTimerDirection
     local interp = Enum and Enum.StatusBarInterpolation and Enum.StatusBarInterpolation.Immediate
-    local dir = dirs and (isChannel and dirs.RemainingTime or dirs.ElapsedTime)
+    local dir
+    if dirs then
+        if isChannel then dir = dirs.RemainingTime else dir = dirs.ElapsedTime end
+    end
+    -- si el StatusBar no acepta el objeto (no había casteo), se trata como "sin casteo"
+    if not pcall(f.bar.SetTimerDuration, f.bar, dur, interp, dir) then return false end
 
     f.mode = "timer"
     f.channel = isChannel
     pcall(f.nameText.SetText, f.nameText, name)
     local ok, text = pcall(tostring, name)
-    f.spellName = ok and text or nil
+    if ok and not (issecretvalue and issecretvalue(text)) then f.spellName = text else f.spellName = nil end
     f.timeText:SetText("")
-    f.bar:SetTimerDuration(dur, interp, dir)
     SetBarColor(f, isChannel and c.colorChannel or c.colorCast)
     SetLockedOverlay(f.locked, notInt)
     return true
@@ -292,9 +297,13 @@ end
 
 local warned = false
 local function Fill(f, unit)
-    local ok, found = pcall(FillClassic, f, unit)
-    if ok then return found end
-    local ok2, found2 = pcall(FillTimer, f, unit)
+    -- la API oficial indica si los datos de esta unidad vendrán secretos: true = ruta segura directa
+    if ns.Secrets.CastIsSecret(unit) ~= true then
+        local ok, found = pcall(FillClassic, f, unit)
+        if ok then return found end
+        -- datos secretos pese a todo: se sigue con la ruta segura
+    end
+    local ok2, found2 = pcall(FillSecret, f, unit)
     if ok2 then return found2 end
     if not warned then
         warned = true
@@ -328,7 +337,8 @@ local function Announce(f)
         local icon = string.format(
             "|TInterface\\TargetingFrame\\UI-RaidTargetingIcons:14:14:0:0:256:256:%d:%d:%d:%d|t",
             l, l + 64, t, t + 64)
-        local spell = f.spellName and (" " .. f.spellName) or ""
+        local spell = ""
+        if f.spellName and not (issecretvalue and issecretvalue(f.spellName)) then spell = " " .. f.spellName end
         if f.result == "int" then
             print(PREFIX .. icon .. spell .. " |cff33ff55" .. L["interrupted"] .. "|r")
         else
@@ -378,44 +388,22 @@ local function RefreshUnit(unit)
     end
 end
 
-local function ScanAll()
-    for i = 1, 40 do
-        local unit = "nameplate" .. i
-        if UnitExists(unit) then
-            pcall(RefreshUnit, unit)
-        elseif byUnit[unit] then
-            Release(byUnit[unit])
-        end
-    end
-end
-
-local function IsPlate(unit)
-    return type(unit) == "string" and unit:sub(1, 9) == "nameplate"
-end
-
+-- Eventos de casteo POR NAMEPLATE: cada plate enemigo tiene su propio marco con RegisterUnitEvent(evento, unidad).
+-- Así el addon solo recibe los casteos de esos mobs, no los de todo el grupo y la banda (como haría RegisterEvent).
+local CAST_EVENTS = {
+    "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_STOP", "UNIT_SPELLCAST_SUCCEEDED",
+    "UNIT_SPELLCAST_INTERRUPTED", "UNIT_SPELLCAST_DELAYED",
+    "UNIT_SPELLCAST_CHANNEL_START", "UNIT_SPELLCAST_CHANNEL_STOP",
+    "UNIT_SPELLCAST_CHANNEL_UPDATE", "UNIT_SPELLCAST_INTERRUPTIBLE",
+    "UNIT_SPELLCAST_NOT_INTERRUPTIBLE",
+}
 local startEvents = {
     UNIT_SPELLCAST_START = true, UNIT_SPELLCAST_CHANNEL_START = true,
     UNIT_SPELLCAST_DELAYED = true, UNIT_SPELLCAST_CHANNEL_UPDATE = true,
     UNIT_SPELLCAST_INTERRUPTIBLE = true, UNIT_SPELLCAST_NOT_INTERRUPTIBLE = true,
 }
 
-anchor:SetScript("OnEvent", function(_, event, unit, ...)
-    if event == "RAID_TARGET_UPDATE" then
-        ScanAll()
-        return
-    elseif event == "PLAYER_ENTERING_WORLD" then
-        ReleaseAll()
-        ScanAll()
-        return
-    elseif event == "NAME_PLATE_UNIT_ADDED" then
-        pcall(RefreshUnit, unit)
-        return
-    elseif event == "NAME_PLATE_UNIT_REMOVED" then
-        if byUnit[unit] then Release(byUnit[unit]) end
-        return
-    end
-
-    if not IsPlate(unit) then return end
+local function HandleCastEvent(event, unit, ...)
     local f = byUnit[unit]
 
     if startEvents[event] then
@@ -433,6 +421,7 @@ anchor:SetScript("OnEvent", function(_, event, unit, ...)
         -- puede llegar antes que INTERRUPTED: se espera un momento antes de soltar la barra
         if not f.result and not f.pendingEnd then
             f.pendingEnd, f.pendingKind = GetTime() + 0.15, "release"
+            SyncUpdate()
         end
     elseif event == "UNIT_SPELLCAST_CHANNEL_STOP" then
         if not f.result then
@@ -447,28 +436,98 @@ anchor:SetScript("OnEvent", function(_, event, unit, ...)
                 Resolve(f, true)
             else
                 f.pendingEnd, f.pendingKind = GetTime() + 0.15, "notint"
+                SyncUpdate()
             end
         end
     end
+end
+
+local function WatcherOnEvent(_, event, unit, ...)
+    HandleCastEvent(event, unit, ...)
+end
+
+local watchers = {}       -- [nameplateN] = marco que escucha los casteos de esa unidad
+local freeWatchers = {}   -- marcos reutilizables
+
+local function WatchUnit(unit)
+    if watchers[unit] then return end
+    local w = table.remove(freeWatchers)
+    if not w then
+        w = CreateFrame("Frame")
+        w:SetScript("OnEvent", WatcherOnEvent)
+    end
+    for _, e in ipairs(CAST_EVENTS) do pcall(w.RegisterUnitEvent, w, e, unit) end
+    watchers[unit] = w
+end
+
+local function UnwatchUnit(unit)
+    local w = watchers[unit]
+    if not w then return end
+    w:UnregisterAllEvents()
+    watchers[unit] = nil
+    freeWatchers[#freeWatchers + 1] = w
+end
+
+local function UnwatchAll()
+    for unit in pairs(watchers) do UnwatchUnit(unit) end
+end
+
+local function ScanAll()
+    local plates = C_NamePlate and C_NamePlate.GetNamePlates and C_NamePlate.GetNamePlates()
+    if plates then
+        local seen = {}
+        for _, plate in ipairs(plates) do
+            local unit = plate.namePlateUnitToken or plate.unit
+            if unit then
+                seen[unit] = true
+                if UnitCanAttack("player", unit) then WatchUnit(unit) end
+                pcall(RefreshUnit, unit)
+            end
+        end
+        for unit, f in pairs(byUnit) do
+            if not seen[unit] then Release(f) end
+        end
+        return
+    end
+    for i = 1, 40 do   -- respaldo si el cliente no tiene C_NamePlate.GetNamePlates
+        local unit = "nameplate" .. i
+        if UnitExists(unit) then
+            if UnitCanAttack("player", unit) then WatchUnit(unit) end
+            pcall(RefreshUnit, unit)
+        elseif byUnit[unit] then
+            Release(byUnit[unit])
+        end
+    end
+end
+
+-- Eventos de baja frecuencia en el ancla: altas/bajas de nameplates, cambios de marca y cambio de zona.
+anchor:SetScript("OnEvent", function(_, event, unit)
+    if event == "RAID_TARGET_UPDATE" then
+        ScanAll()
+    elseif event == "PLAYER_ENTERING_WORLD" then
+        ReleaseAll()
+        UnwatchAll()
+        ScanAll()
+    elseif event == "NAME_PLATE_UNIT_ADDED" then
+        if UnitCanAttack("player", unit) then WatchUnit(unit) end
+        pcall(RefreshUnit, unit)
+    elseif event == "NAME_PLATE_UNIT_REMOVED" then
+        UnwatchUnit(unit)
+        if byUnit[unit] then Release(byUnit[unit]) end
+    end
 end)
 
-local eventList = {
-    "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_STOP", "UNIT_SPELLCAST_SUCCEEDED",
-    "UNIT_SPELLCAST_INTERRUPTED", "UNIT_SPELLCAST_DELAYED",
-    "UNIT_SPELLCAST_CHANNEL_START", "UNIT_SPELLCAST_CHANNEL_STOP",
-    "UNIT_SPELLCAST_CHANNEL_UPDATE", "UNIT_SPELLCAST_INTERRUPTIBLE",
-    "UNIT_SPELLCAST_NOT_INTERRUPTIBLE",
-    "NAME_PLATE_UNIT_ADDED", "NAME_PLATE_UNIT_REMOVED",
-    "RAID_TARGET_UPDATE", "PLAYER_ENTERING_WORLD",
-}
 local eventsOn = false
 
 local function SetEvents(on)
     if on == eventsOn then return end
     eventsOn = on
     anchor:UnregisterAllEvents()
-    if not on then return end
-    for _, e in ipairs(eventList) do
+    if not on then
+        UnwatchAll()
+        return
+    end
+    for _, e in ipairs({ "NAME_PLATE_UNIT_ADDED", "NAME_PLATE_UNIT_REMOVED", "RAID_TARGET_UPDATE", "PLAYER_ENTERING_WORLD" }) do
         local ok = pcall(anchor.RegisterEvent, anchor, e)
         if not ok then print(PREFIX .. string.format(L["Event not available: %s"], e)) end
     end
@@ -496,9 +555,23 @@ local function OnUpdate()
             else
                 if remaining < 0 then remaining = 0 end
                 f.bar:SetValue(f.channel and remaining or (now - f.start))
-                f.timeText:SetText(string.format("%.1f", remaining))
+                -- el texto solo se reescribe cuando cambia la décima de segundo
+                local tenths = math.floor(remaining * 10)
+                if tenths ~= f.lastTenths then
+                    f.lastTenths = tenths
+                    f.timeText:SetText(string.format("%.1f", remaining))
+                end
             end
         end
+    end
+end
+
+-- El OnUpdate solo existe mientras haya barras activas; sin casteos de mobs marcados no corre nada.
+SyncUpdate = function()
+    if #active > 0 and cfg().enabled then
+        anchor:SetScript("OnUpdate", OnUpdate)
+    else
+        anchor:SetScript("OnUpdate", nil)
     end
 end
 
@@ -518,14 +591,18 @@ function Marked.Apply()
 
     if c.enabled then
         SetEvents(true)
-        anchor:SetScript("OnUpdate", OnUpdate)
+        SyncUpdate()
         ClearPreview()
         Layout()
         ScanAll()
     else
         SetEvents(false)
-        anchor:SetScript("OnUpdate", nil)
         ReleaseAll()
+        SyncUpdate()
         ClearPreview()
     end
 end
+
+-- Solo para pruebas.
+Marked.Watchers = watchers
+Marked.ActiveCount = function() return #active end

@@ -58,7 +58,9 @@ function Timeline.SpellIcon(id)
 end
 
 -- Cooldown de un hechizo: devuelve el momento en que termina y su duración, o nil.
+-- El tercer valor es true si el dato está OCULTO (la API oficial avisa con C_Secrets antes de leer).
 local function ReadSpellCooldown(id)
+    if ns.Secrets.SpellCooldownIsSecret(id) == true then return nil, nil, true end
     local start, duration
     if C_Spell and C_Spell.GetSpellCooldown then
         local info = C_Spell.GetSpellCooldown(id)
@@ -221,7 +223,6 @@ local state = {}       -- [spellID] = { expiration, duration, estimated, readyUn
 local castAt = {}      -- [spellID] = momento en que se lanzó (para estimar si los datos están ocultos)
 local dirty = true
 local inCombat = false
-local polled = 0
 
 local function Track(id)
     local e = state[id]
@@ -274,8 +275,8 @@ local function Poll()
     local now = GetTime()
     for _, id in ipairs(c.spells) do
         local e = state[id] or Track(id)
-        local ok, expiration, duration = pcall(ReadCooldown, id)
-        if ok then
+        local ok, expiration, duration, hidden = pcall(ReadCooldown, id)
+        if ok and not hidden then
             if expiration and duration >= c.minCooldown and expiration > now then
                 if not e.expiration then
                     -- cooldown nuevo: si ya va por debajo del aviso, no suena
@@ -404,12 +405,36 @@ local function PreviewItems(now)
 end
 Timeline.PreviewItems = PreviewItems
 
+local pool, poolN = {}, 0         -- elementos a dibujar, reutilizados en cada frame
+local lanePos = {}
+
+local function Push(r, icon, ready)
+    poolN = poolN + 1
+    local it = pool[poolN]
+    if not it then it = {}; pool[poolN] = it end
+    it.r, it.icon, it.ready = r, icon, ready
+end
+
+-- Orden por segundos restantes (inserción: pocos elementos y casi ordenados, sin crear closures)
+local function SortPool()
+    for i = 2, poolN do
+        local it = pool[i]
+        local j = i - 1
+        while j >= 1 and pool[j].r > it.r do
+            pool[j + 1] = pool[j]
+            j = j - 1
+        end
+        pool[j + 1] = it
+    end
+end
+
+-- Dibuja la línea. Devuelve true mientras hay algo animándose (íconos, vista previa o destello).
 local function Render()
     local c = cfg()
     local now = GetTime()
     local horizontal = IsHorizontal()
 
-    local items = {}
+    poolN = 0
     for _, id in ipairs(c.spells) do
         local e = state[id]
         if e then
@@ -426,29 +451,37 @@ local function Render()
                         PlayFor(id, "warn")
                     end
                 end
-                if r <= c.window then items[#items + 1] = { r = r, icon = e.icon } end
+                if r <= c.window then Push(r, e.icon) end
             elseif e.readyUntil and now < e.readyUntil then
-                items[#items + 1] = { r = 0, icon = e.icon, ready = true }
+                Push(0, e.icon, true)
             end
         end
     end
     -- "solo en combate": se oculta el dibujo (y PlayFor silencia los sonidos); el seguimiento sigue
     if c.combatOnly and not inCombat and not c.unlocked then
         root:Hide()
-        return
+        for i = 1, MAX_SPELLS do icons[i]:Hide() end
+        return false
     end
-    if #items == 0 and c.unlocked then items = PreviewItems(now) end
+    if poolN == 0 and c.unlocked then
+        local preview = PreviewItems(now)
+        for i = 1, #preview do Push(preview[i].r, preview[i].icon) end
+    end
 
-    local show = #items > 0 or c.alwaysShow or c.unlocked
+    local show = poolN > 0 or c.alwaysShow or c.unlocked
     root:SetShown(show)
-    if not show then return end
+    if not show then
+        for i = 1, MAX_SPELLS do icons[i]:Hide() end
+        return false
+    end
 
-    table.sort(items, function(a, b) return a.r < b.r end)
+    SortPool()
 
-    local lanePos = {}
+    lanePos[0], lanePos[1], lanePos[2] = nil, nil, nil
     local gap = c.iconSize + 2
     for i = 1, MAX_SPELLS do
-        local f, item = icons[i], items[i]
+        local f = icons[i]
+        local item = i <= poolN and pool[i] or nil
         if not item then
             f:Hide()
         else
@@ -471,18 +504,28 @@ local function Render()
                 f:SetPoint("CENTER", root, c.reverse and "TOP" or "BOTTOM", perp, c.reverse and -pos or pos)
             end
 
-            f.tex:SetTexture(item.icon or QUESTION)
+            local tex = item.icon or QUESTION
+            if f.lastTex ~= tex then
+                f.lastTex = tex
+                f.tex:SetTexture(tex)
+            end
             if item.ready then
-                f.text:SetText("")
+                if f.lastKey ~= "ready" then f.lastKey = "ready"; f.text:SetText("") end
                 f.glow:Show()
                 f.glow:SetAlpha(0.5 + 0.5 * math.sin(now * 14))
             else
                 f.glow:Hide()
-                f.text:SetText(c.showTime and FormatTime(item.r) or "")
+                -- el texto solo se reescribe cuando cambia el valor mostrado
+                local key = not c.showTime and "off" or (item.r >= 10 and -math.floor(item.r) or math.floor(item.r * 10))
+                if key ~= f.lastKey then
+                    f.lastKey = key
+                    f.text:SetText(c.showTime and FormatTime(item.r) or "")
+                end
             end
             f:Show()
         end
     end
+    return true
 end
 
 ---------------------------------------------------------------------------
@@ -491,15 +534,47 @@ end
 
 local driver = CreateFrame("Frame")
 
-driver:SetScript("OnUpdate", function(_, dt)
-    if not cfg().enabled then return end
-    polled = polled + dt
-    if dirty or polled >= 0.1 then
-        dirty, polled = false, 0
+-- El OnUpdate solo existe mientras hay algo que animar o vigilar. Sin íconos visibles baja a 4 veces por segundo
+-- (solo para avisar al entrar en la ventana) y sin cooldowns pendientes se apaga. Los eventos lo despiertan.
+local awake, busy, acc = false, true, 0
+
+local function AnyPending()
+    for _, e in pairs(state) do
+        if e.expiration or e.readyUntil then return true end
+    end
+    return false
+end
+
+local function Step(_, dt)
+    if not cfg().enabled then
+        awake = false
+        driver:SetScript("OnUpdate", nil)
+        return
+    end
+    if not dirty and not busy then
+        acc = acc + dt
+        if acc < 0.25 then return end
+    end
+    acc = 0
+    if dirty then
+        dirty = false
         Poll()
     end
-    Render()
-end)
+    busy = Render()
+    if not busy and not dirty and not cfg().unlocked and not AnyPending() then
+        awake = false
+        driver:SetScript("OnUpdate", nil)
+    end
+end
+
+local function Wake()
+    dirty = true
+    if not awake then
+        awake = true
+        busy = true
+        driver:SetScript("OnUpdate", Step)
+    end
+end
 
 driver:SetScript("OnEvent", function(_, event, unit, _, spellID)
     if event == "PLAYER_REGEN_DISABLED" then
@@ -519,7 +594,7 @@ driver:SetScript("OnEvent", function(_, event, unit, _, spellID)
         for _, id in ipairs(cfg().spells) do Track(id) end
         if event == "GET_ITEM_INFO_RECEIVED" and ns.RefreshOptions then ns.RefreshOptions() end
     end
-    dirty = true
+    Wake()
 end)
 
 local eventsOn = false
@@ -529,7 +604,7 @@ local function SetEvents(on)
     driver:UnregisterAllEvents()
     if not on then return end
     for _, e in ipairs({ "SPELL_UPDATE_COOLDOWN", "SPELL_UPDATE_CHARGES", "SPELLS_CHANGED", "PLAYER_ENTERING_WORLD",
-      "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "GET_ITEM_INFO_RECEIVED" }) do
+      "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "GET_ITEM_INFO_RECEIVED", "BAG_UPDATE_COOLDOWN" }) do
         local ok = pcall(driver.RegisterEvent, driver, e)
         if not ok then print(PREFIX .. string.format(L["Event not available: %s"], e)) end
     end
@@ -559,7 +634,7 @@ function Timeline.AddEntry(id)
     if #list >= MAX_SPELLS then return false, string.format(L["The list is full (%d entries)."], MAX_SPELLS) end
     list[#list + 1] = id
     Track(id)
-    dirty = true
+    Wake()
     if ns.RefreshOptions then ns.RefreshOptions() end
     local name = Timeline.EntryName(id) or ("#" .. math.abs(id))
     return true, string.format(isItem and L["Item '%s' added."] or L["Spell '%s' added."], name)
@@ -582,7 +657,7 @@ function Timeline.RemoveEntry(id)
     table.remove(cfg().spells, i)
     cfg().spellSounds[id] = nil
     state[id] = nil
-    dirty = true
+    Wake()
     if ns.RefreshOptions then ns.RefreshOptions() end
     return true, L["Removed from the timeline."]
 end
@@ -736,7 +811,7 @@ function Timeline.Apply()
     inCombat = UnitAffectingCombat and UnitAffectingCombat("player") and true or false
     for _, id in ipairs(c.spells) do Track(id) end
     SetEvents(c.enabled)
-    dirty = true
+    Wake()
     if not c.enabled then
         root:Hide()
         for _, f in ipairs(icons) do f:Hide() end

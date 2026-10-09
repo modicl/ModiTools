@@ -66,6 +66,7 @@ local es = {
     ["Usage: /modi prepot test | add <spellID> | remove <spellID> | sound <soundkitID or file path>"] = "Uso: /modi prepot test | add <spellID> | remove <spellID> | sound <soundkitID o ruta del archivo>",
     ["Sound when the potion is ready"] = "Sonido cuando la poción está lista",
     ["Potion ready (voice)"] = "Poción lista (voz)",
+    ["Focus casting (voice)"] = "Focus casteando (voz)",
     ["Trinket ready (voice)"] = "Trinket listo (voz)",
     ["Healing potion ready (voice)"] = "Poción de HP lista (voz)",
     ["HP potion"] = "Poción de HP",

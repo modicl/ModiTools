@@ -27,7 +27,7 @@ local defaults = {
     colorFailed = { 0.9, 0.2, 0.2, 1 },
     colorBG = { 0, 0, 0, 0.6 },
     colorBorder = { 0, 0, 0, 1 },
-    soundStart = false, soundStartKey = "raid", soundOnlyInterruptible = true,
+    soundStart = false, soundStartKey = "mt_focus_casting", soundOnlyInterruptible = true,
     soundInterrupt = false, soundInterruptKey = "ready",
     soundCustom = "",   -- soundkit ID o ruta de archivo, usado con la opción "Personalizado"
 }
@@ -49,6 +49,8 @@ do
     add({ header = true, en = "ModiTools" })
     add({ value = "mt_potion_ready", en = "Potion ready (voice)",
           file = "Interface\\AddOns\\ModiTools\\Media\\potion_ready.mp3" })
+    add({ value = "mt_focus_casting", en = "Focus casting (voice)",
+          file = "Interface\\AddOns\\ModiTools\\Media\\focus_casting.mp3" })
     add({ value = "mt_trinket_ready", en = "Trinket ready (voice)",
           file = "Interface\\AddOns\\ModiTools\\Media\\trinket_ready.mp3" })
     add({ value = "mt_healing_potion_ready", en = "Healing potion ready (voice)",

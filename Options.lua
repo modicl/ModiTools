@@ -62,7 +62,7 @@ end
 
 local function Label(parent, text, size, color)
     local fs = parent:CreateFontString(nil, "ARTWORK")
-    fs:SetFont(STANDARD_TEXT_FONT, size or 12, "")
+    fs:SetFont(STANDARD_TEXT_FONT, (size or 12) + 1, "")
     fs:SetTextColor(rgb(color or C.text))
     fs:SetJustifyH("LEFT")
     if text then fs:SetText(text) end
@@ -136,10 +136,10 @@ end
 -- cada elemento trae su botón "Probar" dentro de la lista.
 ---------------------------------------------------------------------------
 
-local ITEM_H = 22
-local TITLE_H = 24
+local ITEM_H = 26
+local TITLE_H = 28
 local MAX_ROWS = 9
-local MENU_W = 220
+local MENU_W = 280
 local SCROLL_W = 14
 local PLAY_W = 46
 local menu
@@ -356,17 +356,20 @@ end
 -- Constructor de controles (cada página usa uno)
 ---------------------------------------------------------------------------
 
-local ROW = 26
-local ROW0 = -70
-local COLX = { 16, 306 }
+local ROW = 32
+local ROW0 = -78
+local COLX = { 24, 428 }
+local COLW = 372        -- ancho útil de una columna
+local LABELW = 150      -- ancho de la etiqueta en filas con control (deslizador, lista, tecla)
+local CTRLX = 158       -- posición del control respecto de la etiqueta
 local MAXROWS = 15
 local builders = {}
 
 -- Casilla con estilo; devuelve la función que la sincroniza con el valor guardado.
 local function CreateCheck(panel, x, y, text, get, set, help)
     local box = CreateFrame("Button", nil, panel)
-    box:SetSize(18, 18)
-    box:SetPoint("TOPLEFT", x, y - 2)
+    box:SetSize(20, 20)
+    box:SetPoint("TOPLEFT", x, y - 3)
     Skin(box, C.bgDarker, true)
     local mark = box:CreateTexture(nil, "ARTWORK")
     mark:SetPoint("TOPLEFT", 4, -4)
@@ -379,7 +382,7 @@ local function CreateCheck(panel, x, y, text, get, set, help)
     -- botón "?" con una explicación en el tooltip
     if help then
         local q = CreateFrame("Button", nil, panel)
-        q:SetSize(16, 16)
+        q:SetSize(20, 20)
         q:SetPoint("LEFT", label, "RIGHT", 8, 0)
         Skin(q, C.bg, false)
         q.sign = Label(q, "?", 11, C.accent)
@@ -442,7 +445,7 @@ local function NewBuilder(panel)
         h:SetPoint("TOPLEFT", x, y - 6)
         local line = panel:CreateTexture(nil, "ARTWORK")
         line:SetPoint("TOPLEFT", x, y - 22)
-        line:SetSize(262, 1)
+        line:SetSize(COLW, 1)
         line:SetColorTexture(rgb(C.light, 0.45))
     end
 
@@ -450,12 +453,12 @@ local function NewBuilder(panel)
     function b:CheckDynamic(textFn, get, set)
         local x, y = self:Next()
         local refresh, label, box = CreateCheck(panel, x, y, textFn(), get, set)
-        label:SetWidth(236)
+        label:SetWidth(COLW - 26)
         label:SetWordWrap(false)
         self.refreshers[#self.refreshers + 1] = function()
             refresh()
             label:SetText(textFn())
-            box:SetHitRectInsets(0, -(math.min(label:GetStringWidth(), 236) + 10), 0, 0)
+            box:SetHitRectInsets(0, -(math.min(label:GetStringWidth(), COLW - 26) + 10), 0, 0)
         end
     end
 
@@ -468,16 +471,16 @@ local function NewBuilder(panel)
         local x, y = self:Next()
         local label = Label(panel, text, 12, C.text)
         label:SetPoint("TOPLEFT", x, y - 4)
-        label:SetWidth(118)
+        label:SetWidth(LABELW)
 
         local s = CreateFrame("Slider", nil, panel)
-        s:SetPoint("TOPLEFT", x + 122, y - 7)
-        s:SetSize(100, 10)
+        s:SetPoint("TOPLEFT", x + CTRLX, y - 9)
+        s:SetSize(150, 12)
         s:SetOrientation("HORIZONTAL")
         s:EnableMouse(true)
         Skin(s, C.bgDarker, true)
         s:SetThumbTexture("Interface/Buttons/WHITE8x8")
-        s:GetThumbTexture():SetSize(8, 18)
+        s:GetThumbTexture():SetSize(10, 20)
         s:GetThumbTexture():SetVertexColor(rgb(C.muted))
         s:SetMinMaxValues(min, max)
         s:SetValueStep(step)
@@ -486,11 +489,11 @@ local function NewBuilder(panel)
         -- el valor se puede arrastrar con la barra o escribir en la cajita (solo números)
         local box = CreateFrame("EditBox", nil, panel)
         box:SetPoint("LEFT", s, "RIGHT", 8, 0)
-        box:SetSize(40, 18)
+        box:SetSize(52, 22)
         box:SetAutoFocus(false)
         box:SetMaxLetters(6)
         box:SetJustifyH("CENTER")
-        box:SetFont(STANDARD_TEXT_FONT, 11, "")
+        box:SetFont(STANDARD_TEXT_FONT, 12, "")
         box:SetTextColor(rgb(C.accent))
         Skin(box, C.bgDarker, true)
         s.box = box
@@ -557,10 +560,10 @@ local function NewBuilder(panel)
         local x, y = self:Next()
         local label = Label(panel, text, 12, C.text)
         label:SetPoint("TOPLEFT", x, y - 4)
-        label:SetWidth(118)
+        label:SetWidth(LABELW)
 
-        local btn = CreateButton(panel, "", 140, 22)
-        btn:SetPoint("TOPLEFT", x + 122, y)
+        local btn = CreateButton(panel, "", 190, 26)
+        btn:SetPoint("TOPLEFT", x + CTRLX, y)
         btn.label:ClearAllPoints()
         btn.label:SetPoint("LEFT", 8, 0)
         btn.label:SetPoint("RIGHT", -20, 0)
@@ -588,8 +591,8 @@ local function NewBuilder(panel)
     function b:Color(text, key, field, withAlpha)
         local x, y = self:Next()
         local btn = CreateFrame("Button", nil, panel)
-        btn:SetSize(22, 18)
-        btn:SetPoint("TOPLEFT", x, y - 2)
+        btn:SetSize(26, 20)
+        btn:SetPoint("TOPLEFT", x, y - 3)
         Skin(btn, C.bgDarker, true)
         local swatch = btn:CreateTexture(nil, "ARTWORK")
         swatch:SetPoint("TOPLEFT", 2, -2)
@@ -624,11 +627,11 @@ local function NewBuilder(panel)
         local x2, y2 = self:Next()
         local eb = CreateFrame("EditBox", nil, panel)
         eb:SetPoint("TOPLEFT", x2, y2)
-        eb:SetSize(262, 22)
+        eb:SetSize(COLW, 26)
         eb:SetAutoFocus(false)
         eb:SetMaxLetters(numeric and 10 or 60)
         if numeric then eb:SetNumeric(true) end
-        eb:SetFont(STANDARD_TEXT_FONT, 12, "")
+        eb:SetFont(STANDARD_TEXT_FONT, 13, "")
         eb:SetTextColor(rgb(C.text))
         eb:SetTextInsets(8, 8, 0, 0)
         Skin(eb, C.bgDarker, true)
@@ -648,7 +651,7 @@ local function NewBuilder(panel)
         for _ = 2, (rows or 1) do self:Next() end
         local fs = Label(panel, "", 11, C.muted)
         fs:SetPoint("TOPLEFT", x, y - 4)
-        fs:SetWidth(262)
+        fs:SetWidth(COLW)
         fs:SetSpacing(3)
         fs:SetJustifyV("TOP")
         self.refreshers[#self.refreshers + 1] = function() fs:SetText(textFn()) end
@@ -661,7 +664,7 @@ local function NewBuilder(panel)
         for _ = 2, (rows or 2) do self:Next() end
 
         local box = CreateFrame("Frame", nil, panel)
-        box:SetSize(40, 40)
+        box:SetSize(44, 44)
         box:SetPoint("TOPLEFT", x, y - 2)
         Skin(box, C.bgDarker, true)
         box:EnableMouse(true)
@@ -672,7 +675,7 @@ local function NewBuilder(panel)
 
         local fs = Label(panel, "", 11, C.muted)
         fs:SetPoint("TOPLEFT", box, "TOPRIGHT", 10, -2)
-        fs:SetWidth(212)
+        fs:SetWidth(COLW - 50)
         fs:SetSpacing(3)
         fs:SetJustifyV("TOP")
 
@@ -707,11 +710,11 @@ local function NewBuilder(panel)
         local x, y = self:Next()
         local label = Label(panel, text, 12, C.text)
         label:SetPoint("TOPLEFT", x, y - 4)
-        label:SetWidth(118)
+        label:SetWidth(LABELW)
 
-        local btn = CreateButton(panel, "", 140, 22)
-        btn:SetPoint("TOPLEFT", x + 122, y)
-        local clear = CreateButton(panel, "X", 22, 22)
+        local btn = CreateButton(panel, "", 190, 26)
+        btn:SetPoint("TOPLEFT", x + CTRLX, y)
+        local clear = CreateButton(panel, "X", 26, 26)
         clear:SetPoint("LEFT", btn, "RIGHT", 4, 0)
 
         local capturing = false
@@ -766,16 +769,16 @@ local function NewBuilder(panel)
         for i = 1, maxRows do
             local x, y = self:Next()
             local row = CreateFrame("Frame", nil, panel)
-            row:SetSize(262, 22)
+            row:SetSize(COLW, 26)
             row:SetPoint("TOPLEFT", x, y - 1)
             row.icon = row:CreateTexture(nil, "ARTWORK")
-            row.icon:SetSize(20, 20)
+            row.icon:SetSize(24, 24)
             row.icon:SetPoint("LEFT", 0, 0)
             row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
             row.name = Label(row, "", 11, C.text)
             row.name:SetPoint("LEFT", row.icon, "RIGHT", 6, 0)
-            row.name:SetWidth(200)
-            row.remove = CreateButton(row, "X", 20, 18, function()
+            row.name:SetWidth(COLW - 70)
+            row.remove = CreateButton(row, "X", 24, 22, function()
                 if row.id then onRemove(row.id) end
             end)
             row.remove:SetPoint("RIGHT", 0, 0)
@@ -813,10 +816,10 @@ local function NewBuilder(panel)
         local x2, y2 = self:Next()
         local eb = CreateFrame("EditBox", nil, panel)
         eb:SetPoint("TOPLEFT", x2, y2)
-        eb:SetSize(262, 22)
+        eb:SetSize(COLW, 26)
         eb:SetAutoFocus(false)
         eb:SetMaxLetters(0)
-        eb:SetFont(STANDARD_TEXT_FONT, 10, "")
+        eb:SetFont(STANDARD_TEXT_FONT, 11, "")
         eb:SetTextColor(rgb(C.muted))
         eb:SetTextInsets(8, 8, 0, 0)
         Skin(eb, C.bgDarker, true)
@@ -827,9 +830,9 @@ local function NewBuilder(panel)
 
     function b:Button(text, onClick)
         local x, y = self:Next()
-        local btn = CreateButton(panel, text, 160, 22, onClick)
+        local btn = CreateButton(panel, text, 180, 26, onClick)
         -- el botón se ensancha para que el texto quepa (máximo: el ancho de la columna)
-        btn:SetWidth(math.max(160, math.min(262, btn.label:GetStringWidth() + 28)))
+        btn:SetWidth(math.max(180, math.min(COLW, btn.label:GetStringWidth() + 36)))
         btn:SetPoint("TOPLEFT", x, y)
     end
 
@@ -972,7 +975,7 @@ end
 
 local function AddNav(key, text, moduleKey, parentKey)
     local nav = CreateFrame("Button", nil, win.sidebar)
-    nav:SetHeight(32)
+    nav:SetHeight(38)
     nav.selectedBG = nav:CreateTexture(nil, "BACKGROUND")
     nav.selectedBG:SetAllPoints()
     nav.selectedBG:SetColorTexture(rgb(C.select))
@@ -1000,16 +1003,16 @@ local function AddNav(key, text, moduleKey, parentKey)
 end
 
 local function PageHeader(panel, title, desc)
-    local t = Label(panel, title, 18, C.accent)
-    t:SetPoint("TOPLEFT", 16, -14)
+    local t = Label(panel, title, 20, C.accent)
+    t:SetPoint("TOPLEFT", 24, -16)
     if desc then
         local d = Label(panel, desc, 11, C.muted)
-        d:SetPoint("TOPLEFT", 16, -40)
-        d:SetWidth(556)
+        d:SetPoint("TOPLEFT", 24, -46)
+        d:SetWidth(780)
     end
     local line = panel:CreateTexture(nil, "ARTWORK")
-    line:SetPoint("TOPLEFT", 16, -58)
-    line:SetPoint("TOPRIGHT", -16, -58)
+    line:SetPoint("TOPLEFT", 24, -66)
+    line:SetPoint("TOPRIGHT", -24, -66)
     line:SetHeight(1)
     line:SetColorTexture(rgb(C.light, 0.5))
 end
@@ -1047,7 +1050,7 @@ local function BuildHome()
 
     local art = frame:CreateTexture(nil, "ARTWORK")
     art:SetTexture("Interface\\AddOns\\ModiTools\\Media\\dwarf")
-    art:SetSize(190, 190)
+    art:SetSize(230, 230)
     art:SetPoint("TOPRIGHT", -24, -24)
     local artFrame = CreateFrame("Frame", nil, frame)
     artFrame:SetPoint("TOPLEFT", art, "TOPLEFT", -2, 2)
@@ -1066,12 +1069,12 @@ local function BuildHome()
         .. L["The dot next to each tool shows whether it is enabled."],
         12, C.text)
     intro:SetPoint("TOPLEFT", version, "BOTTOMLEFT", 0, -28)
-    intro:SetWidth(330)
-    intro:SetSpacing(2)
+    intro:SetWidth(520)
+    intro:SetSpacing(4)
 
     -- ícono del minimapa e idioma
     local hb = NewBuilder(frame)
-    hb.row = 11
+    hb.row = 12
     hb:Check(L["Show minimap icon"],
         function() return not ns.global.minimap.hide end,
         function(v)
@@ -1088,14 +1091,17 @@ local function BuildHome()
         L["Commands:"] .. "  /modi   ·   /modi yards|focus|marked|threat|brez|timeline|prepot   ·   "
         .. "/modi unlock|lock " .. L["<tool|all>"] .. "   ·   /modi reset   ·   /modi minimap   ·   /modi lang en|es",
         10, C.muted)
-    cmds:SetWidth(538)
+    cmds:SetWidth(780)
     cmds:SetSpacing(2)
     cmds:SetPoint("BOTTOMLEFT", 24, 16)
 end
 
 local function BuildWindow()
     win = CreateFrame("Frame", "ModiToolsWindow", UIParent)
-    win:SetSize(780, 560)
+    win:SetSize(1060, 720)
+    -- en pantallas pequeñas la ventana se reduce para que entre completa
+    local screenH = UIParent:GetHeight()
+    if type(screenH) == "number" and screenH < 760 then win:SetScale(math.max(0.6, (screenH - 40) / 720)) end
     win:SetFrameStrata("HIGH")
     win:SetMovable(true)
     win:SetClampedToScreen(true)
@@ -1108,7 +1114,7 @@ local function BuildWindow()
 
     -- barra de título (arrastrable)
     local bar = CreateFrame("Frame", nil, win)
-    bar:SetHeight(36)
+    bar:SetHeight(40)
     bar:SetPoint("TOPLEFT")
     bar:SetPoint("TOPRIGHT")
     bar:EnableMouse(true)
@@ -1119,17 +1125,17 @@ local function BuildWindow()
         local point, _, _, x, y = win:GetPoint()
         pos.point, pos.x, pos.y = point, x, y
     end)
-    local name = Label(bar, "ModiTools", 16, C.accent)
+    local name = Label(bar, "ModiTools", 18, C.accent)
     name:SetPoint("LEFT", 14, 0)
     local ver = Label(bar, "v" .. AddonVersion(), 11, C.muted)
     ver:SetPoint("LEFT", name, "RIGHT", 8, -2)
-    local close = CreateButton(bar, "X", 24, 20, function() win:Hide() end)
+    local close = CreateButton(bar, "X", 28, 24, function() win:Hide() end)
     close:SetPoint("RIGHT", -8, 0)
 
     win.sidebar = CreateFrame("Frame", nil, win)
-    win.sidebar:SetPoint("TOPLEFT", 8, -44)
+    win.sidebar:SetPoint("TOPLEFT", 8, -48)
     win.sidebar:SetPoint("BOTTOMLEFT", 8, 8)
-    win.sidebar:SetWidth(170)
+    win.sidebar:SetWidth(210)
     Skin(win.sidebar, C.bgDark, true)
 
     win.content = CreateFrame("Frame", nil, win)
@@ -1158,7 +1164,7 @@ end
 
 local picker
 local PICK_ROWS = 10
-local PICK_ROW_H = 38
+local PICK_ROW_H = 44
 
 local function FormatCooldown(seconds)
     if not seconds then return "" end
@@ -1223,7 +1229,7 @@ end
 
 local function BuildPicker()
     local p = CreateFrame("Frame", "ModiToolsSpellPicker", UIParent)
-    p:SetSize(430, 560)
+    p:SetSize(540, 660)
     p:SetPoint("CENTER", 60, 0)
     p:SetFrameStrata("DIALOG")
     p:SetMovable(true)
@@ -1285,16 +1291,16 @@ local function BuildPicker()
         hl:SetAllPoints()
         hl:SetColorTexture(rgb(C.hover, 0.7))
         row.icon = row:CreateTexture(nil, "ARTWORK")
-        row.icon:SetSize(30, 30)
+        row.icon:SetSize(34, 34)
         row.icon:SetPoint("LEFT", 6, 0)
         row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         row.name = Label(row, "", 12, C.text)
         row.name:SetPoint("TOPLEFT", row.icon, "TOPRIGHT", 8, -3)
-        row.name:SetWidth(250)
+        row.name:SetWidth(340)
         row.detail = Label(row, "", 10, C.muted)
         row.detail:SetPoint("BOTTOMLEFT", row.icon, "BOTTOMRIGHT", 8, 3)
         local check = CreateFrame("Frame", nil, row)
-        check:SetSize(18, 18)
+        check:SetSize(20, 20)
         check:SetPoint("RIGHT", -8, 0)
         Skin(check, C.bgDarker, true)
         row.mark = check:CreateTexture(nil, "ARTWORK")

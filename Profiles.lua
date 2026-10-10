@@ -43,6 +43,7 @@ end
 ---------------------------------------------------------------------------
 
 function ns.InitProfiles()
+    ns.freshInstall = ModiToolsDB == nil or next(ModiToolsDB) == nil   -- primera vez que se usa el addon
     ModiToolsDB = ModiToolsDB or {}
     local root = ModiToolsDB
 

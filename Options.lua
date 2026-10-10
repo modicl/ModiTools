@@ -884,7 +884,7 @@ local pageOrder = {}
 local function AddonVersion()
     local fn = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
     local ok, v = pcall(fn, "ModiTools", "Version")
-    return (ok and v) or "0.7"
+    return (ok and v) or "0.8"
 end
 
 local function RefreshNav()
@@ -1081,6 +1081,7 @@ local function BuildHome()
             ns.global.minimap.hide = not v
             if ns.UpdateMinimap then ns.UpdateMinimap() end
         end)
+    hb:Button(L["View changelog"], function() ns.ShowChangelog() end)
     hb:Cycle("Language / Idioma", {
         { value = "en", label = "English" },
         { value = "es", label = "Español (MX)" },
@@ -1130,6 +1131,20 @@ local function BuildWindow()
     local ver = Label(bar, "v" .. AddonVersion(), 11, C.muted)
     ver:SetPoint("LEFT", name, "RIGHT", 8, -2)
     local close = CreateButton(bar, "X", 28, 24, function() win:Hide() end)
+
+    -- al salir de ModiTools las vistas previas se apagan (para que no queden prendidas al jugar)
+    win:SetScript("OnHide", function()
+        local any
+        for _, key in ipairs(ns.order) do
+            local c = ns.db[key]
+            if c and c.unlocked then
+                c.unlocked = false
+                ns.modules[key].Apply()
+                any = true
+            end
+        end
+        if any then ns.RefreshOptions() end
+    end)
     close:SetPoint("RIGHT", -8, 0)
 
     win.sidebar = CreateFrame("Frame", nil, win)
@@ -1610,6 +1625,8 @@ local function BuildAll()
         L["Icon with the time left on the potion you used, and a sound when the potion is ready again."], nil,
         { parent = "prepot", label = L["Prepot"] })
     pi:Header(L["Icon"])
+    local getIcon, setIcon = Bind("prepot", "showIcon")
+    pi:Check(L["Show icon"], getIcon, setIcon, L["Turn it off if you only want the ready sound and no icon on screen."])
     pi:Check(L["Preview / unlock to move the icon"], Bind("prepot", "unlocked"))
     pi:Header(L["Appearance"])
     pi:Slider(L["Icon size"], 24, 128, 2, Bind("prepot", "iconSize"))
@@ -1929,3 +1946,6 @@ function ns.CreateOptions()
         InterfaceOptions_AddCategory(stub)
     end
 end
+
+-- Piezas de interfaz para otras ventanas del addon (por ejemplo el registro de cambios).
+ns.UI = { Skin = Skin, Label = Label, CreateButton = CreateButton, C = C, rgb = rgb }

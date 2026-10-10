@@ -119,6 +119,7 @@ loader:SetScript("OnEvent", function(self, _, name)
         ns.modules[key].Apply()
     end
     ns.CreateOptions()
+    if ns.CheckChangelog then ns.CheckChangelog() end
 end)
 
 ---------------------------------------------------------------------------
@@ -136,7 +137,7 @@ local function OpenOptions()
 end
 
 local function Help()
-    print(ns.PREFIX .. "/modi, /modi yards|focus|marked|threat|brez|timeline|prepot, /modi unlock|lock <yards|focus|marked|threat|brez|timeline|prepot|all>, /modi reset, /modi minimap, /modi lang en|es, /modi profile, /modi size <n>, /modi prepot test|add <id>|remove <id>")
+    print(ns.PREFIX .. "/modi, /modi yards|focus|marked|threat|brez|timeline|prepot, /modi unlock|lock <yards|focus|marked|threat|brez|timeline|prepot|all>, /modi reset, /modi minimap, /modi lang en|es, /modi changelog, /modi profile, /modi size <n>, /modi prepot test|add <id>|remove <id>")
 end
 
 SLASH_MODITOOLS1 = "/modi"
@@ -208,6 +209,8 @@ SlashCmdList["MODITOOLS"] = function(msg)
         else
             print(ns.PREFIX .. L["Usage: /modi lang en|es"])
         end
+    elseif cmd == "changelog" then
+        if ns.ShowChangelog then ns.ShowChangelog() end
     elseif cmd == "profile" then
         local sub, rest = arg:match("^(%S*)%s*(.*)$")
         if sub:lower() == "use" and rest ~= "" then

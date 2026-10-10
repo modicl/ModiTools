@@ -66,6 +66,12 @@ local es = {
     ["Usage: /modi prepot test | add <spellID> | remove <spellID> | sound <soundkitID or file path>"] = "Uso: /modi prepot test | add <spellID> | remove <spellID> | sound <soundkitID o ruta del archivo>",
     ["Sound when the potion is ready"] = "Sonido cuando la poción está lista",
     ["Potion ready (voice)"] = "Poción lista (voz)",
+    ["What's new in ModiTools"] = "Novedades de ModiTools",
+    ["New"] = "Nueva",
+    ["Close"] = "Cerrar",
+    ["View changelog"] = "Ver novedades",
+    ["Show icon"] = "Mostrar ícono",
+    ["Turn it off if you only want the ready sound and no icon on screen."] = "Desactívalo si solo quieres el sonido de listo y ningún ícono en pantalla.",
     ["Focus casting (voice)"] = "Focus casteando (voz)",
     ["Trinket ready (voice)"] = "Trinket listo (voz)",
     ["Healing potion ready (voice)"] = "Poción de HP lista (voz)",
@@ -374,8 +380,9 @@ ns.Locales = { es = es }
 local current = "en"
 
 function ns.DetectLanguage()
+    -- idioma del cliente de WoW: cualquier español (esES, esMX...) usa español; el resto, inglés
     local locale = GetLocale and GetLocale() or "enUS"
-    return locale:sub(1, 2) == "es" and "es" or "en"
+    return tostring(locale):sub(1, 2):lower() == "es" and "es" or "en"
 end
 
 -- Cambia las traducciones activas (L es la misma tabla, así que el cambio es inmediato

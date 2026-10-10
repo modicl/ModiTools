@@ -36,6 +36,7 @@ Copia (o clona) esta carpeta como `World of Warcraft\_retail_\Interface\AddOns\M
 /modi profile [use <nombre>]           listar / cambiar de perfil
 /modi minimap                          mostrar/ocultar el ícono del minimapa
 /modi lang en|es                       idioma de la interfaz
+/modi changelog                        novedades de cada versión
 /modi debug                            mostrar eventos de casteo en el chat
 ```
 

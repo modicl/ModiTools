@@ -2,7 +2,7 @@
 ## Title: ModiTools
 ## Notes: Utilidades: yardas al target, barra de casteo del focus, casteos de mobs marcados, alerta de threat, brez en una tecla, línea de cooldowns y duración de la prepot. /modi para configurar.
 ## Author: Villa
-## Version: 0.7
+## Version: 0.8
 ## SavedVariables: ModiToolsDB
 
 Locales.lua
@@ -18,4 +18,5 @@ ThreatAlert.lua
 BrezKey.lua
 Timeline.lua
 Options.lua
+Changelog.lua
 Minimap.lua

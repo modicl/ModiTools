@@ -17,6 +17,7 @@ local defaults = {
     enabled = true, unlocked = false,
     point = "CENTER", x = 0, y = -100,
     iconSize = 48, alpha = 1,
+    showIcon = true,   -- false: sin ícono en pantalla (los sonidos siguen funcionando)
     showText = true, fontSize = 20, textPos = "CENTER",
     showSwirl = true, showBorder = true,
     warnAt = 10,
@@ -85,7 +86,7 @@ end
 
 local function Render()
     local c = cfg()
-    if not c.enabled then
+    if not c.enabled or not c.showIcon then
         frame:Hide()
         return
     end
@@ -110,6 +111,7 @@ local function Stop()
 end
 
 local function Start(spellID, tex, duration, expiration, isTest)
+    if not cfg().showIcon then tracked = nil; Render(); return end   -- sin ícono no hay nada que seguir en pantalla
     tracked = { spellID = spellID, icon = tex, duration = duration, expiration = expiration, test = isTest }
     Render()
 end

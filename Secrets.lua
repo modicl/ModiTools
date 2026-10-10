@@ -35,6 +35,11 @@ function Secrets.SpellCooldownIsSecret(spellID)
     return Predicate("ShouldSpellCooldownBeSecret", spellID)
 end
 
+-- ¿Este hechizo, aplicado como aura, vendrá como secreto?
+function Secrets.SpellAuraIsSecret(spellID)
+    return Predicate("ShouldSpellAuraBeSecret", spellID)
+end
+
 -- Devuelve (cantidad de valores, primer valor) sin inspeccionar ese valor.
 local function Count(...)
     return select("#", ...), ...

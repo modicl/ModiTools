@@ -20,7 +20,7 @@ local defaults = {
     width = 260, height = 24, alpha = 1,
     texture = "Blizzard", fontSize = 12,
     showIcon = true, showName = true, showTime = true,
-    showBorder = true, showSpark = true, showGlow = false,
+    showBorder = true, showSpark = true, showGlow = false, glowStyle = "pulse",
     colorCast = { 1, 0.8, 0.1, 1 },
     colorChannel = { 0.2, 0.9, 0.3, 1 },
     colorLocked = { 0.6, 0.6, 0.6, 1 },
@@ -97,11 +97,7 @@ local function cfg() return ns.db.focus end
 local frame = CreateFrame("Frame", "ModiToolsFocusCastFrame", UIParent)
 frame:SetFrameStrata("HIGH")
 
-local glow = CreateFrame("Frame", nil, frame, "BackdropTemplate")
-glow:SetPoint("TOPLEFT", -4, 4)
-glow:SetPoint("BOTTOMRIGHT", 4, -4)
-glow:SetFrameLevel(math.max(0, frame:GetFrameLevel() - 1))
-glow:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 4 })
+local glow = ns.Glow.Create(frame)   -- resplandor animado (estilos en Glow.lua)
 
 local icon = frame:CreateTexture(nil, "ARTWORK")
 icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
@@ -148,7 +144,7 @@ local ShowPreview
 local function SetBarColor(c)
     currentColor = c
     bar:SetStatusBarColor(c[1], c[2], c[3], c[4] or 1)
-    glow:SetBackdropBorderColor(c[1], c[2], c[3], 0.5)
+    glow:SetGlowColor(c[1], c[2], c[3])
 end
 
 -- "No interrumpible": en contenido restringido el booleano es secreto y no se puede comparar.
@@ -294,10 +290,6 @@ end
 local function OnUpdate()
     local c = cfg()
     local now = GetTime()
-
-    if c.showGlow and glow:IsShown() then
-        glow:SetAlpha(0.45 + 0.35 * math.sin(now * 5))
-    end
 
     if cast.active then
         local remaining = cast.finish - now
@@ -460,8 +452,8 @@ function Focus.Apply()
     spark:SetSize(16, c.height * 2.2)
     spark:SetShown(c.showSpark)
 
+    glow:SetStyle(c.glowStyle)
     glow:SetShown(c.showGlow)
-    if not c.showGlow then glow:SetAlpha(1) end
 
     nameText:SetFont(STANDARD_TEXT_FONT, c.fontSize, "OUTLINE")
     timeText:SetFont(STANDARD_TEXT_FONT, c.fontSize, "OUTLINE")

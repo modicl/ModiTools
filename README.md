@@ -13,6 +13,7 @@ Interfaz en **English** y **Español (MX)**, perfiles exportables por código y 
 | **Alerta de threat** | Muestra un texto (personalizable, con sonido) cuando estás perdiendo el aggro de un mob. |
 | **Brez en una tecla** | Convierte una tecla (aunque ya la uses) en el brez de tu clase mientras el mouse está sobre un aliado muerto. |
 | **CD Timeline** | Línea de tiempo (horizontal o vertical) con los cooldowns que elijas: hechizos, trinkets y pociones. Detecta los de tu clase, con avisos y sonidos por elemento. |
+| **Debuffs del tank** | Íconos con los debuffs del otro tank del grupo o raid: stacks, tiempo restante y tooltip. Cuántos ver, columnas, filas, tamaño, lista blanca y resplandor opcional. |
 | **Prepot/Trinket** | Ícono con el tiempo restante de la poción que usaste, y sonidos (voz) cuando el cooldown de tu poción, tu poción de HP o los trinkets que elijas vuelve a estar listo. |
 | **Perfiles** | Guarda, cambia y comparte tu configuración por código (importar / exportar con nombre). |
 
@@ -24,13 +25,14 @@ Copia (o clona) esta carpeta como `World of Warcraft\_retail_\Interface\AddOns\M
 
 ```
 /modi                                  abrir la ventana de opciones
-/modi yards|focus|marked|threat|brez|timeline|prepot   activar/desactivar una herramienta
+/modi yards|focus|marked|threat|brez|timeline|tankdebuffs|prepot   activar/desactivar una herramienta
 /modi unlock|lock <herramienta|all>    desbloquear (vista previa y mover) / fijar
 /modi reset                            restablecer posiciones
 /modi size <10-72>                     tamaño del texto de yardas
 /modi focus sound <id|ruta>            sonido personalizado para el focus
 /modi threat test|text <texto>|sound <id|ruta>
 /modi brez key <tecla>|status
+/modi tankdebuffs add <id>|remove <id>|capture|status
 /modi timeline pick|add <id>|addItem <id>|remove <id>|removeItem <id>|list|sound <id|ruta>
 /modi prepot test|add <id>|remove <id>|sound <id|ruta>
 /modi profile [use <nombre>]           listar / cambiar de perfil

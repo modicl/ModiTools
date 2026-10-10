@@ -2,8 +2,8 @@
 --
 -- /modi                         -> abrir opciones
 -- /modi yards | focus | marked | prepot  -> activar/desactivar la herramienta
--- /modi unlock <yards|focus|marked|threat|brez|timeline|prepot|all>
--- /modi lock   <yards|focus|marked|threat|brez|timeline|prepot|all>
+-- /modi unlock <yards|focus|marked|threat|brez|timeline|tankdebuffs|prepot|all>
+-- /modi lock   <yards|focus|marked|threat|brez|timeline|tankdebuffs|prepot|all>
 -- /modi reset                   -> restablece posiciones
 -- /modi size <10-72>            -> tamaño de la fuente de las yardas
 -- /modi prepot test|add <id>|remove <id>
@@ -137,7 +137,7 @@ local function OpenOptions()
 end
 
 local function Help()
-    print(ns.PREFIX .. "/modi, /modi yards|focus|marked|threat|brez|timeline|prepot, /modi unlock|lock <yards|focus|marked|threat|brez|timeline|prepot|all>, /modi reset, /modi minimap, /modi lang en|es, /modi changelog, /modi profile, /modi size <n>, /modi prepot test|add <id>|remove <id>")
+    print(ns.PREFIX .. "/modi, /modi yards|focus|marked|threat|brez|timeline|tankdebuffs|prepot, /modi unlock|lock <yards|focus|marked|threat|brez|timeline|tankdebuffs|prepot|all>, /modi reset, /modi minimap, /modi lang en|es, /modi changelog, /modi profile, /modi size <n>, /modi prepot test|add <id>|remove <id>")
 end
 
 SLASH_MODITOOLS1 = "/modi"
@@ -166,7 +166,7 @@ SlashCmdList["MODITOOLS"] = function(msg)
     elseif cmd == "unlock" or cmd == "lock" then
         local list = Targets(arg:lower())
         if not list then
-            print(ns.PREFIX .. string.format(L["Usage: /modi %s <yards|focus|marked|threat|brez|timeline|prepot|all>"], cmd))
+            print(ns.PREFIX .. string.format(L["Usage: /modi %s <yards|focus|marked|threat|brez|timeline|tankdebuffs|prepot|all>"], cmd))
             return
         end
         for _, key in ipairs(list) do

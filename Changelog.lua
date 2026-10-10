@@ -15,6 +15,21 @@ ns.Changelog = Changelog
 
 Changelog.entries = {
     {
+        version = "0.9", date = "2026-10",
+        en = {
+            "New tool: Tank debuffs. Follows the other tank's debuffs as icons with stacks, time left and tooltip. Choose how many to show, columns, rows, size and growth direction, plus a whitelist and an optional glow.",
+            "Focus cast: choose the glow style (pulse, solid, rotating lines or sparkles) with a live sample next to the list.",
+            "Every sound list now has a play button next to it to hear the selected sound.",
+            "Prepot: the potion icon is optional.",
+        },
+        es = {
+            "Nueva herramienta: Debuffs del tank. Sigue los debuffs del otro tank como íconos con stacks, tiempo restante y tooltip. Elige cuántos ver, columnas, filas, tamaño y dirección de crecimiento, además de una lista blanca y un resplandor opcional.",
+            "Focus cast: elige el estilo del resplandor (pulso, fijo, líneas giratorias o destellos) con una muestra animada junto a la lista.",
+            "Todas las listas de sonido ahora tienen un botón de play al lado para escuchar el sonido elegido.",
+            "Prepot: el ícono de la poción es opcional.",
+        },
+    },
+    {
         version = "0.8", date = "2026-10",
         en = {
             "New ready sounds with voice: potion, healing potion, trinket, and focus casting.",

@@ -556,7 +556,9 @@ local function NewBuilder(panel)
     end
 
     -- Lista desplegable (ver OpenMenu).
-    function b:Cycle(text, options, get, set)
+    -- Si la lista tiene `preview` (listas de sonidos) agrega un botón ▶ al lado para escuchar lo elegido.
+    -- globalKey (opcional): qué sonido suena cuando el valor es "global" (usa el compartido).
+    function b:Cycle(text, options, get, set, globalKey)
         local x, y = self:Next()
         local label = Label(panel, text, 12, C.text)
         label:SetPoint("TOPLEFT", x, y - 4)
@@ -585,6 +587,52 @@ local function NewBuilder(panel)
             end)
         end)
         self.refreshers[#self.refreshers + 1] = function() btn.label:SetText(labelOf(get())) end
+
+        if options.preview then
+            local play = CreateButton(panel, "", 26, 26, function()
+                local v = get()
+                if v == "global" and globalKey then v = globalKey() end
+                if v == nil or v == "none" or v == "global" then return end
+                options.preview(v)
+            end)
+            play:SetPoint("LEFT", btn, "RIGHT", 4, 0)
+            local tex = play:CreateTexture(nil, "OVERLAY")
+            tex:SetTexture("Interface/Buttons/UI-SpellbookIcon-NextPage-Up")
+            tex:SetSize(22, 22)
+            tex:SetPoint("CENTER", 1, 0)
+            play:HookScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(L["Play"], 1, 1, 1)
+                GameTooltip:Show()
+            end)
+            play:HookScript("OnLeave", function() GameTooltip:Hide() end)
+        end
+        return btn
+    end
+
+    -- Estilo de glow: lista desplegable con una muestra animada al lado.
+    function b:GlowStyle(text, get, set, colorFn)
+        local options = ns.Glow.StyleOptions()
+        local btn = self:Cycle(text, options, get, set)
+        btn:SetWidth(150)
+
+        local box = CreateFrame("Frame", nil, panel)
+        box:SetSize(64, 32)
+        box:SetPoint("LEFT", btn, "RIGHT", 10, 0)
+        Skin(box, C.bgDarker, true)
+        local sample = box:CreateTexture(nil, "ARTWORK")
+        sample:SetSize(38, 10)
+        sample:SetPoint("CENTER")
+        sample:SetColorTexture(0.35, 0.35, 0.35, 1)
+        local inner = CreateFrame("Frame", nil, box)
+        inner:SetSize(38, 10)
+        inner:SetPoint("CENTER")
+        local glow = ns.Glow.Create(inner, 5)
+        self.refreshers[#self.refreshers + 1] = function()
+            local col = colorFn()
+            glow:SetGlowColor(col[1], col[2], col[3])
+            glow:SetStyle(get())
+        end
     end
 
     -- Muestra de color. withAlpha agrega el control de transparencia.
@@ -764,7 +812,7 @@ local function NewBuilder(panel)
     end
 
     -- Lista de hechizos (ícono, nombre e ID) con botón para quitar cada uno.
-    function b:SpellList(getList, onRemove, maxRows)
+    function b:SpellList(getList, onRemove, maxRows, module)
         local rows = {}
         for i = 1, maxRows do
             local x, y = self:Next()
@@ -790,7 +838,7 @@ local function NewBuilder(panel)
 
         self.refreshers[#self.refreshers + 1] = function()
             local list = getList()
-            local module = ns.modules.timeline
+            local module = module or ns.modules.timeline
             for i, row in ipairs(rows) do
                 local id = list[i]
                 if id then
@@ -884,7 +932,7 @@ local pageOrder = {}
 local function AddonVersion()
     local fn = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
     local ok, v = pcall(fn, "ModiTools", "Version")
-    return (ok and v) or "0.8"
+    return (ok and v) or "0.9"
 end
 
 local function RefreshNav()
@@ -1065,6 +1113,7 @@ local function BuildHome()
         .. "- " .. L["Threat alert: warning when you lose aggro."] .. "\n"
         .. "- " .. L["Brez: combat res on a key."] .. "\n"
         .. "- " .. L["CD Timeline: upcoming cooldowns of your spells."] .. "\n"
+        .. "- " .. L["Tank debuffs: the other tank's debuffs as icons."] .. "\n"
         .. "- " .. L["Prepot/Trinket: potion timer, plus ready sounds for potions and trinkets."] .. "\n\n"
         .. L["The dot next to each tool shows whether it is enabled."],
         12, C.text)
@@ -1089,7 +1138,7 @@ local function BuildHome()
     frame:SetScript("OnShow", function() hb:Refresh() end)
 
     local cmds = Label(frame,
-        L["Commands:"] .. "  /modi   ·   /modi yards|focus|marked|threat|brez|timeline|prepot   ·   "
+        L["Commands:"] .. "  /modi   ·   /modi yards|focus|marked|threat|brez|timeline|tankdebuffs|prepot   ·   "
         .. "/modi unlock|lock " .. L["<tool|all>"] .. "   ·   /modi reset   ·   /modi minimap   ·   /modi lang en|es",
         10, C.muted)
     cmds:SetWidth(780)
@@ -1481,6 +1530,8 @@ local function BuildAll()
     fb:Check(L["Show border"], Bind("focus", "showBorder"))
     fb:Check(L["Spark (glow on the progress edge)"], Bind("focus", "showSpark"))
     fb:Check(L["Glow around the bar"], Bind("focus", "showGlow"))
+    local getGlowStyle, setGlowStyle = Bind("focus", "glowStyle")
+    fb:GlowStyle(L["Glow style"], getGlowStyle, setGlowStyle, function() return ns.db.focus.colorCast end)
     fb:Header(L["Colors"])
     fb:Color(L["Normal cast"], "focus", "colorCast")
     fb:Color(L["Channel"], "focus", "colorChannel")
@@ -1818,9 +1869,111 @@ local function BuildAll()
         if #ns.db.timeline.spells == 0 then return L["Add something to the timeline first."] end
         return L["Choose a spell or item to give it its own sounds. \"Use the global sound\" keeps the shared one."]
     end, 3)
-    tsd:Cycle(L["Warning sound"], perSpellSounds, SpellSound("warn", "global"))
+    local getWarn, setWarn = SpellSound("warn", "global")
+    tsd:Cycle(L["Warning sound"], perSpellSounds, getWarn, setWarn, function() return ns.db.timeline.soundWarnKey end)
     tsd:Slider(L["Warn at (s), 0 = global"], 0, 60, 1, SpellSound("warnAt", 0))
-    tsd:Cycle(L["Ready sound"], perSpellSounds, SpellSound("ready", "global"))
+    local getReady, setReady = SpellSound("ready", "global")
+    tsd:Cycle(L["Ready sound"], perSpellSounds, getReady, setReady, function() return ns.db.timeline.soundReadyKey end)
+
+
+    -- Debuffs del otro tank
+    local tdStatus = ""
+    local tdField = ""
+    local tdSortOptions = {
+        { value = "default", label = L["Default"] },
+        { value = "expiration", label = L["Time left"] },
+        { value = "name", label = L["Name"] },
+        { value = "none", label = L["Unsorted"] },
+    }
+    local tdModeOptions = {
+        { value = "all", label = L["All debuffs"] },
+        { value = "whitelist", label = L["Only my whitelist"] },
+    }
+    local tdGrowOptions = {
+        { value = "RIGHT_DOWN", label = L["Right and down"] },
+        { value = "LEFT_DOWN", label = L["Left and down"] },
+        { value = "RIGHT_UP", label = L["Right and up"] },
+        { value = "LEFT_UP", label = L["Left and up"] },
+    }
+    local td = MakePage("tankdebuffs", L["Tank debuffs"],
+        L["Debuffs of the other tank in your group or raid, as icons with stacks and time left."], "tankdebuffs")
+    GeneralSection(td, "tankdebuffs")
+    td:Header(L["Who to follow"])
+    td:Input(L["Tank name (optional)"], function() return ns.db.tankdebuffs.tankName end, function(v)
+        ns.db.tankdebuffs.tankName = v
+        ns.modules.tankdebuffs.Apply()
+    end)
+    td:Info(function()
+        local name = ns.modules.tankdebuffs.TrackedName()
+        local text = name and string.format(L["Following: %s"], name) or L["No tank to follow right now."]
+        return text .. "\n" .. L["Leave it empty to follow the first other tank of the group."]
+    end, 2)
+    td:Header(L["Which debuffs"])
+    td:Cycle(L["Show"], tdModeOptions, Bind("tankdebuffs", "mode"))
+    td:Cycle(L["Order"], tdSortOptions, Bind("tankdebuffs", "sort"))
+    td:Slider(L["Max debuffs"], 1, 24, 1, Bind("tankdebuffs", "maxAuras"))
+    td:Button(L["Restore defaults"], function() ns.ResetModule("tankdebuffs") end)
+    td:NewColumn()
+    td:Header(L["Whitelist"])
+    td:Input(L["Spell ID"], function() return tdField end, function(v) tdField = v end, true)
+    td:Button(L["Add"], function()
+        local ok, msg = ns.modules.tankdebuffs.AddSpell(tdField)
+        if ok then tdField = "" end
+        tdStatus = msg
+        ns.RefreshOptions()
+    end)
+    td:Button(L["Capture the tank's current debuffs"], function()
+        local _, msg = ns.modules.tankdebuffs.CaptureCurrent()
+        tdStatus = msg
+        ns.RefreshOptions()
+    end)
+    td:Info(function()
+        if tdStatus ~= "" then return tdStatus end
+        return L["Only used when \"Show\" is set to \"Only my whitelist\"."]
+    end, 2)
+    td:SpellList(function() return ns.db.tankdebuffs.spells end, function(id)
+        local _, msg = ns.modules.tankdebuffs.RemoveSpell(id)
+        tdStatus = msg
+        ns.RefreshOptions()
+    end, 7, ns.modules.tankdebuffs)
+    td:Info(function()
+        local hidden, total = ns.modules.tankdebuffs.HiddenCount()
+        if hidden > 0 then
+            return string.format(L["%d of %d whitelisted debuffs may be hidden by the game in combat."], hidden, total)
+        end
+        return L["In combat the game may hide some debuffs from addons; the whitelist cannot match those."]
+    end, 3)
+
+    local tds = MakePage("tankdebuffs_style", L["Tank debuffs style"],
+        L["Layout, elements, colors and glow of the icons."], nil, { parent = "tankdebuffs", label = L["Style"] })
+    tds:Header(L["Layout"])
+    tds:Slider(L["Icon size"], 20, 80, 1, Bind("tankdebuffs", "iconSize"))
+    tds:Slider(L["Columns"], 1, 8, 1, Bind("tankdebuffs", "columns"))
+    tds:Slider(L["Rows"], 1, 6, 1, Bind("tankdebuffs", "rows"))
+    tds:Slider(L["Spacing"], 0, 20, 1, Bind("tankdebuffs", "spacing"))
+    tds:Cycle(L["Grow direction"], tdGrowOptions, Bind("tankdebuffs", "grow"))
+    tds:Slider(L["Opacity"], 0.2, 1, 0.05, Bind("tankdebuffs", "alpha"))
+    tds:Header(L["Colors"])
+    tds:Color(L["Border"], "tankdebuffs", "colorBorder", true)
+    tds:Color(L["Stacks"], "tankdebuffs", "colorStack")
+    tds:Button(L["Restore defaults"], function() ns.ResetModule("tankdebuffs") end)
+    tds:NewColumn()
+    tds:Header(L["Elements"])
+    tds:Check(L["Show stacks"], Bind("tankdebuffs", "showStacks"))
+    tds:Slider(L["Stack size"], 8, 32, 1, Bind("tankdebuffs", "stackSize"))
+    tds:Slider(L["Show stacks from"], 1, 5, 1, Bind("tankdebuffs", "stackMin"))
+    tds:Check(L["Show time"], Bind("tankdebuffs", "showTimer"))
+    tds:Check(L["Cooldown swirl"], Bind("tankdebuffs", "showSwirl"))
+    tds:Check(L["Show border"], Bind("tankdebuffs", "showBorder"))
+    tds:Check(L["Border by debuff type"], Bind("tankdebuffs", "dispelBorder"))
+    tds:Check(L["Tooltip on hover"], Bind("tankdebuffs", "tooltip"))
+    tds:Header(L["Glow"])
+    tds:Check(L["Glow on debuffs"], Bind("tankdebuffs", "glow"))
+    local getTdGlow, setTdGlow = Bind("tankdebuffs", "glowStyle")
+    tds:GlowStyle(L["Glow style"], getTdGlow, setTdGlow, function() return ns.db.tankdebuffs.colorGlow end)
+    tds:Color(L["Glow color"], "tankdebuffs", "colorGlow")
+    local getTdMin, setTdMin = Bind("tankdebuffs", "glowMinStacks")
+    tds:Slider(L["Glow from stacks (0 = always)"], 0, 20, 1, getTdMin, setTdMin)
 
     -- Perfiles
     local profileOptions = {}

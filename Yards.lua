@@ -176,7 +176,7 @@ local function RefreshTarget()
     lastKind = nil
     if c.enabled and UnitExists("target") then
         RequestItemData()
-        text:SetTextColor(1, 1, 1)
+        text:SetTextColor(ns.Palette.rgb("text"))
         frame:SetScript("OnUpdate", OnUpdate)
         elapsed = 1   -- calcula en el próximo frame
         return
@@ -184,7 +184,7 @@ local function RefreshTarget()
     frame:SetScript("OnUpdate", nil)
     if c.unlocked then
         text:SetText("-- yd")
-        text:SetTextColor(0.7, 0.7, 0.7)
+        text:SetTextColor(ns.Palette.rgb("textSub"))
     else
         text:SetText("")
     end

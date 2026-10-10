@@ -12,7 +12,7 @@
 local ADDON_NAME, ns = ...
 local L = ns.L
 
-ns.PREFIX = "|cff33aaffModiTools:|r "
+ns.PREFIX = ns.Palette.hex("info") .. "ModiTools:|r "
 ns.defaults = {}
 ns.modules = {}
 ns.order = {}
@@ -84,7 +84,7 @@ function ns.ApplyLockVisuals(frame, cfg)
     if not frame.unlockTex then
         local t = frame:CreateTexture(nil, "OVERLAY", nil, 7)
         t:SetAllPoints()
-        t:SetColorTexture(0, 0.4, 0.8, 0.35)
+        t:SetColorTexture(ns.Palette.rgb("info", 0.35))
         frame.unlockTex = t
     end
     local show = cfg.enabled and cfg.unlocked and true or false

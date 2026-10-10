@@ -2,6 +2,7 @@
 ## Title: ModiTools
 ## Notes: Utilidades: yardas al target, barra de casteo del focus, casteos de mobs marcados, alerta de threat, brez en una tecla, línea de cooldowns y duración de la prepot. /modi para configurar.
 ## Author: Villa
+## X-License: MIT
 ## Version: 0.9
 ## SavedVariables: ModiToolsDB
 

@@ -1097,8 +1097,9 @@ local function BuildHome()
     version:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 2, -8)
 
     local art = frame:CreateTexture(nil, "ARTWORK")
-    art:SetTexture("Interface\\AddOns\\ModiTools\\Media\\dwarf")
-    art:SetSize(230, 230)
+    -- retrato vertical (532x1435): el archivo es 256x1024 y se muestra con la proporción original
+    art:SetTexture("Interface\\AddOns\\ModiTools\\Media\\dwarf_home")
+    art:SetSize(200, 540)
     art:SetPoint("TOPRIGHT", -24, -24)
     local artFrame = CreateFrame("Frame", nil, frame)
     artFrame:SetPoint("TOPLEFT", art, "TOPLEFT", -2, 2)

@@ -49,3 +49,7 @@ Copia (o clona) esta carpeta como `World of Warcraft\_retail_\Interface\AddOns\M
 - Si una poción no se detecta sola, agrégala con `/modi prepot add <spellID>`.
 - En Midnight el juego puede ocultar cooldowns en combate: la línea de tiempo estima el fin con el
   cooldown base al lanzar el hechizo o usar el objeto.
+
+## Licencia
+
+[MIT](LICENSE). Las voces de `Media/` se generaron con las voces públicas de ElevenLabs.

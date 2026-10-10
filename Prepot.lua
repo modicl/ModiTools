@@ -21,9 +21,9 @@ local defaults = {
     showText = true, fontSize = 20, textPos = "CENTER",
     showSwirl = true, showBorder = true,
     warnAt = 10,
-    colorText = { 1, 1, 1, 1 },
-    colorWarn = { 1, 0.2, 0.2, 1 },
-    colorBorder = { 0, 0, 0, 1 },
+    colorText = ns.Palette.color("text"),
+    colorWarn = ns.Palette.color("danger"),
+    colorBorder = ns.Palette.color("border"),
     extra = {},   -- spellIDs de pociones agregados a mano
     soundReady = true, soundReadyKey = "mt_potion_ready",   -- sonido al terminar el cooldown de la poción
     soundCustom = "",   -- soundkit ID o ruta de archivo, usado con la opción "Personalizado"

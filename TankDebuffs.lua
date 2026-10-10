@@ -28,10 +28,10 @@ local defaults = {
     showStacks = true, stackSize = 16, stackMin = 2,
     showTimer = true, showSwirl = true,
     showBorder = true, dispelBorder = true, tooltip = true,
-    colorBorder = { 0.75, 0.1, 0.1, 1 },
-    colorStack = { 1, 1, 1, 1 },
+    colorBorder = ns.Palette.color("danger"),
+    colorStack = ns.Palette.color("text"),
     glow = false, glowStyle = "pixel", glowMinStacks = 0,
-    colorGlow = { 1, 0.82, 0, 1 },
+    colorGlow = ns.Palette.color("gold"),
     spells = {},                   -- lista blanca (spellIDs)
 }
 

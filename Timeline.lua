@@ -27,10 +27,10 @@ local defaults = {
     reverse = false,        -- H: el "ahora" queda a la derecha. V: arriba.
     length = 420, thickness = 10, iconSize = 32, alpha = 1, fontSize = 11,
     showTime = true, showTicks = true, showNow = true, flashReady = true, iconBorder = true,
-    colorLine = { 0.08, 0.08, 0.1, 0.75 },
-    colorTick = { 1, 1, 1, 0.55 },
-    colorNow = { 1, 0.82, 0, 1 },
-    colorBorder = { 0, 0, 0, 1 },
+    colorLine = ns.Palette.color("bg0", 0.75),
+    colorTick = ns.Palette.color("text", 0.55),
+    colorNow = ns.Palette.color("gold"),
+    colorBorder = ns.Palette.color("border"),
     font = "default",
     soundWarn = false, soundWarnKey = "alarm", warnAt = 5,   -- aviso al quedar N segundos
     soundReady = false, soundReadyKey = "ready",             -- sonido al estar listo
@@ -200,7 +200,7 @@ local function CreateIcon()
     f.glow = f:CreateTexture(nil, "BACKGROUND")
     f.glow:SetPoint("TOPLEFT", -4, 4)
     f.glow:SetPoint("BOTTOMRIGHT", 4, -4)
-    f.glow:SetColorTexture(1, 0.82, 0, 0.6)
+    f.glow:SetColorTexture(ns.Palette.rgb("gold", 0.6))
     f.glow:Hide()
     f.tex = f:CreateTexture(nil, "ARTWORK")
     f.tex:SetAllPoints()

@@ -133,7 +133,8 @@ end
 
 function Brez.StatusText()
     local c = cfg()
-    local green, red, grey = "|cff7fe07f", "|cffff6060", "|cffa0aa95"
+    local P = ns.Palette
+    local green, red, grey = P.hex("success"), P.hex("danger"), P.hex("textSub")
     local className = UnitClass("player") or "?"
     local name, known, source, id = ResolveSpell()
     local lines = {}
@@ -155,7 +156,7 @@ function Brez.StatusText()
     elseif c.key == "" then
         lines[#lines + 1] = grey .. L["Status: choose a key"] .. "|r"
     elseif pending then
-        lines[#lines + 1] = "|cffffd060" .. L["Status: will apply after combat"] .. "|r"
+        lines[#lines + 1] = P.hex("warning") .. L["Status: will apply after combat"] .. "|r"
     elseif applied.active then
         lines[#lines + 1] = green .. string.format(L["Status: active on %s"], c.key) .. "|r"
     else

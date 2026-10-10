@@ -9,17 +9,24 @@ local L = ns.L
 -- Paleta y utilidades de estilo
 ---------------------------------------------------------------------------
 
+local P = ns.Palette
+
+-- Roles de la interfaz -> tokens de la paleta central (Palette.lua).
 local C = {
-    bg       = { 0.298, 0.345, 0.267 },   -- #4C5844
-    bgDark   = { 0.243, 0.275, 0.216 },   -- #3E4637
-    bgDarker = { 0.165, 0.188, 0.145 },   -- #2A3025
-    light    = { 0.533, 0.569, 0.502 },   -- #889180
-    dark     = { 0.161, 0.180, 0.137 },   -- #292E23
-    text     = { 1, 1, 1 },
-    muted    = { 0.627, 0.667, 0.584 },   -- #A0AA95
-    accent   = { 0.769, 0.710, 0.314 },   -- #C4B550
-    hover    = { 0.361, 0.420, 0.322 },   -- #5C6B52
-    select   = { 0.353, 0.416, 0.314 },   -- #5A6A50
+    bg       = P.bg2,        -- botones y tarjetas
+    bgDark   = P.bg1,        -- paneles (barra lateral, contenido, listas)
+    bgDarker = P.bg0,        -- campos hundidos (inputs, cajas, scroll)
+    window   = P.bg0,        -- fondo de la ventana
+    page     = P.bg1,        -- fondo de las páginas
+    light    = P.borderHi,   -- borde claro del bisel y separadores
+    dark     = P.bg0,        -- borde oscuro del bisel
+    text     = P.text,
+    muted    = P.textSub,
+    faint    = P.textMute,   -- placeholder y barras de scroll
+    accent   = P.accent,
+    gold     = P.gold,
+    hover    = P.bg3,
+    select   = P.select,
 }
 
 local function rgb(c, a) return c[1], c[2], c[3], a or 1 end
@@ -306,7 +313,7 @@ local function GetMenu()
     Skin(menu.scroll, C.bgDark, true)
     menu.scroll:SetThumbTexture("Interface/Buttons/WHITE8x8")
     menu.scroll:GetThumbTexture():SetSize(10, 28)
-    menu.scroll:GetThumbTexture():SetVertexColor(rgb(C.muted))
+    menu.scroll:GetThumbTexture():SetVertexColor(rgb(C.faint))
     menu.scroll:SetScript("OnValueChanged", function(self, v)
         if self.loading then return end
         menu.offset = math.floor(v + 0.5)
@@ -390,8 +397,8 @@ local function CreateCheck(panel, x, y, text, get, set, help)
         q:SetScript("OnEnter", function(self)
             self.fill:SetColorTexture(rgb(C.hover))
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText(text, 1, 0.82, 0)
-            GameTooltip:AddLine(help, 1, 1, 1, true)
+            GameTooltip:SetText(text, rgb(C.gold))
+            GameTooltip:AddLine(help, C.text[1], C.text[2], C.text[3], true)
             GameTooltip:Show()
         end)
         q:SetScript("OnLeave", function(self)
@@ -481,7 +488,7 @@ local function NewBuilder(panel)
         Skin(s, C.bgDarker, true)
         s:SetThumbTexture("Interface/Buttons/WHITE8x8")
         s:GetThumbTexture():SetSize(10, 20)
-        s:GetThumbTexture():SetVertexColor(rgb(C.muted))
+        s:GetThumbTexture():SetVertexColor(rgb(C.faint))
         s:SetMinMaxValues(min, max)
         s:SetValueStep(step)
         if s.SetObeyStepOnDrag then s:SetObeyStepOnDrag(true) end
@@ -602,7 +609,7 @@ local function NewBuilder(panel)
             tex:SetPoint("CENTER", 1, 0)
             play:HookScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText(L["Play"], 1, 1, 1)
+                GameTooltip:SetText(L["Play"], rgb(C.text))
                 GameTooltip:Show()
             end)
             play:HookScript("OnLeave", function() GameTooltip:Hide() end)
@@ -623,7 +630,7 @@ local function NewBuilder(panel)
         local sample = box:CreateTexture(nil, "ARTWORK")
         sample:SetSize(38, 10)
         sample:SetPoint("CENTER")
-        sample:SetColorTexture(0.35, 0.35, 0.35, 1)
+        sample:SetColorTexture(rgb(C.hover))
         local inner = CreateFrame("Frame", nil, box)
         inner:SetSize(38, 10)
         inner:SetPoint("CENTER")
@@ -845,7 +852,7 @@ local function NewBuilder(panel)
                     row.id = id
                     row.icon:SetTexture(module.EntryIcon(id) or "Interface/Icons/INV_Misc_QuestionMark")
                     local tag = id < 0 and (L["Item"] .. " " .. -id) or tostring(id)
-                    row.name:SetText((module.EntryName(id) or L["Unknown spell"]) .. " |cffa0aa95(" .. tag .. ")|r")
+                    row.name:SetText((module.EntryName(id) or L["Unknown spell"]) .. " " .. P.hex("textSub") .. "(" .. tag .. ")|r")
                     row:Show()
                 else
                     row.id = nil
@@ -868,7 +875,7 @@ local function NewBuilder(panel)
         eb:SetAutoFocus(false)
         eb:SetMaxLetters(0)
         eb:SetFont(STANDARD_TEXT_FONT, 11, "")
-        eb:SetTextColor(rgb(C.muted))
+        eb:SetTextColor(rgb(C.faint))
         eb:SetTextInsets(8, 8, 0, 0)
         Skin(eb, C.bgDarker, true)
         eb:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
@@ -940,7 +947,8 @@ local function RefreshNav()
         local p = pages[key]
         if p.module and p.nav.dot then
             local on = ns.db[p.module] and ns.db[p.module].enabled
-            p.nav.dot:SetColorTexture(rgb(on and C.accent or C.light, on and 1 or 0.4))
+            p.nav.dot:SetColorTexture(rgb(on and C.accent or C.light))
+            p.nav.dot:SetHeight(on and 8 or 2)
         end
     end
 end
@@ -1157,7 +1165,7 @@ local function BuildWindow()
     win:SetMovable(true)
     win:SetClampedToScreen(true)
     win:EnableMouse(true)
-    Skin(win, C.bg, false)
+    Skin(win, C.window, false)
     win:Hide()
     local pos = ns.global.window
     win:SetPoint(pos.point, UIParent, pos.point, pos.x, pos.y)
@@ -1301,7 +1309,7 @@ local function BuildPicker()
     p:SetClampedToScreen(true)
     p:EnableMouse(true)
     p:EnableMouseWheel(true)
-    Skin(p, C.bg, false)
+    Skin(p, C.page, false)
     p:Hide()
     table.insert(UISpecialFrames, "ModiToolsSpellPicker")
     p.spells, p.visible, p.rows, p.offset = {}, {}, {}, 0
@@ -1335,7 +1343,7 @@ local function BuildPicker()
     search:SetScript("OnTextChanged", function(_, userInput) if userInput then FilterPicker() end end)
     search:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
     p.search = search
-    local placeholder = Label(search, L["Search..."], 11, C.muted)
+    local placeholder = Label(search, L["Search..."], 11, C.faint)
     placeholder:SetPoint("LEFT", 8, 0)
     search:SetScript("OnEditFocusGained", function() placeholder:Hide() end)
     search:SetScript("OnEditFocusLost", function(self) placeholder:SetShown((self:GetText() or "") == "") end)
@@ -1393,7 +1401,7 @@ local function BuildPicker()
     Skin(p.scroll, C.bgDarker, true)
     p.scroll:SetThumbTexture("Interface/Buttons/WHITE8x8")
     p.scroll:GetThumbTexture():SetSize(10, 30)
-    p.scroll:GetThumbTexture():SetVertexColor(rgb(C.muted))
+    p.scroll:GetThumbTexture():SetVertexColor(rgb(C.faint))
     p.scroll:SetScript("OnValueChanged", function(self, v)
         if self.loading then return end
         p.offset = math.floor(v + 0.5)
@@ -1492,7 +1500,7 @@ local function BuildAll()
     yb:NewColumn()
     yb:Header(L["How to read it"])
     yb:Info(function()
-        local g = "|cffc4b550"
+        local g = P.hex("accent")
         return L["WoW does not give the exact distance to an enemy: the addon estimates it."] .. "\n\n"
             .. g .. "15 - 20 yd|r  " .. L["more than 15 and up to 20."] .. "\n"
             .. g .. "< 5 yd|r  " .. L["less than 5."] .. "\n"
@@ -1661,7 +1669,7 @@ local function BuildAll()
     pb:Check(L["Enable"], Bind("prepot", "enabled"))
     pb:Header(L["What's inside"])
     pb:Info(function()
-        local g = "|cffc4b550"
+        local g = P.hex("accent")
         return g .. L["Prepot"] .. "|r  "
             .. L["Shows an icon with the time left on the potion you used, and plays a sound when the potion is ready again."]
             .. "\n\n" .. g .. L["HP potion"] .. "|r  "

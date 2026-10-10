@@ -21,8 +21,8 @@ local defaults = {
     point = "CENTER", x = 0, y = 120,
     text = "",   -- vacío = texto por defecto del idioma activo
     fontSize = 36, alpha = 1, font = "default", outline = "OUTLINE",
-    colorText = { 1, 0.2, 0.2, 1 },
-    showBG = false, colorBG = { 0, 0, 0, 0.5 },
+    colorText = ns.Palette.color("danger"),
+    showBG = false, colorBG = ns.Palette.color("bg0", 0.5),
     flash = true, showMob = false,
     onlyTank = true, holdSeconds = 3,
     sound = false, soundKey = "alarm",

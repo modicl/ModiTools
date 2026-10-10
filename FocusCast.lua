@@ -107,7 +107,7 @@ bar:SetStatusBarTexture(TEXTURES.Blizzard)
 
 local barBG = bar:CreateTexture(nil, "BACKGROUND")
 barBG:SetAllPoints()
-barBG:SetColorTexture(0, 0, 0, 0.6)
+barBG:SetColorTexture(ns.Palette.rgb("bg0", 0.6))
 
 -- velo gris para "no interrumpible" cuando el dato es secreto
 local lockedTex = bar:CreateTexture(nil, "ARTWORK", nil, 2)

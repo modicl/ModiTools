@@ -119,12 +119,12 @@ local popup
 
 local function BuildText(lastSeen)
     local lang = ns.GetLanguage and ns.GetLanguage() or "en"
-    local accent, muted, text = "|cffc4b550", "|cffa0aa95", "|cffffffff"
+    local accent, muted, text = ns.Palette.hex("accent"), ns.Palette.hex("textSub"), ns.Palette.hex("text")
     local out = {}
     for _, entry in ipairs(Changelog.entries) do
         local isNew = lastSeen and CompareVersions(entry.version, lastSeen) > 0
         local head = accent .. string.format(L["Version %s"], entry.version) .. "|r  " .. muted .. entry.date .. "|r"
-        if isNew then head = head .. "   |cff6fd36f[" .. L["New"] .. "]|r" end
+        if isNew then head = head .. "   " .. ns.Palette.hex("success") .. "[" .. L["New"] .. "]|r" end
         out[#out + 1] = head
         for _, line in ipairs(entry[lang] or entry.en) do
             out[#out + 1] = text .. "•|r  " .. line
@@ -146,7 +146,7 @@ local function Build()
     p:SetClampedToScreen(true)
     p:EnableMouse(true)
     p:EnableMouseWheel(true)
-    Skin(p, C.bg, false)
+    Skin(p, C.page, false)
     p:Hide()
     table.insert(UISpecialFrames, "ModiToolsChangelog")
 
@@ -187,7 +187,7 @@ local function Build()
     Skin(p.scroll, C.bgDarker, true)
     p.scroll:SetThumbTexture("Interface/Buttons/WHITE8x8")
     p.scroll:GetThumbTexture():SetSize(10, 30)
-    p.scroll:GetThumbTexture():SetVertexColor(rgb(C.muted))
+    p.scroll:GetThumbTexture():SetVertexColor(rgb(C.faint))
     p.scroll:SetMinMaxValues(0, 0)
     p.scroll:SetValue(0)
 

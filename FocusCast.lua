@@ -25,8 +25,8 @@ local defaults = {
     colorChannel = { 0.2, 0.9, 0.3, 1 },
     colorLocked = { 0.6, 0.6, 0.6, 1 },
     colorFailed = { 0.9, 0.2, 0.2, 1 },
-    colorBG = { 0, 0, 0, 0.6 },
-    colorBorder = { 0, 0, 0, 1 },
+    colorBG = ns.Palette.color("bg0", 0.6),
+    colorBorder = ns.Palette.color("border"),
     soundStart = false, soundStartKey = "mt_focus_casting", soundOnlyInterruptible = true,
     soundInterrupt = false, soundInterruptKey = "ready",
     soundCustom = "",   -- soundkit ID o ruta de archivo, usado con la opción "Personalizado"
@@ -112,7 +112,7 @@ barBG:SetColorTexture(0, 0, 0, 0.6)
 -- velo gris para "no interrumpible" cuando el dato es secreto
 local lockedTex = bar:CreateTexture(nil, "ARTWORK", nil, 2)
 lockedTex:SetAllPoints()
-lockedTex:SetColorTexture(0.5, 0.5, 0.5, 1)
+lockedTex:SetColorTexture(ns.Palette.rgb("disabled"))
 lockedTex:SetAlpha(0)
 
 local spark = bar:CreateTexture(nil, "OVERLAY")

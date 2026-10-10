@@ -20,8 +20,8 @@ local defaults = {
     colorLocked = { 0.6, 0.6, 0.6, 1 },
     colorInterrupted = { 0.2, 0.85, 0.3, 1 },
     colorNotInterrupted = { 0.9, 0.2, 0.2, 1 },
-    colorBG = { 0, 0, 0, 0.6 },
-    colorBorder = { 0, 0, 0, 1 },
+    colorBG = ns.Palette.color("bg0", 0.6),
+    colorBorder = ns.Palette.color("border"),
 }
 
 local Marked = {}
@@ -80,7 +80,7 @@ local function CreateBar()
     -- velo gris para "no interrumpible" cuando el dato es secreto
     f.locked = f.bar:CreateTexture(nil, "ARTWORK", nil, 2)
     f.locked:SetAllPoints()
-    f.locked:SetColorTexture(0.5, 0.5, 0.5, 1)
+    f.locked:SetColorTexture(ns.Palette.rgb("disabled"))
     f.locked:SetAlpha(0)
 
     f.border = CreateFrame("Frame", nil, f, "BackdropTemplate")
@@ -340,9 +340,9 @@ local function Announce(f)
         local spell = ""
         if f.spellName and not (issecretvalue and issecretvalue(f.spellName)) then spell = " " .. f.spellName end
         if f.result == "int" then
-            print(PREFIX .. icon .. spell .. " |cff33ff55" .. L["interrupted"] .. "|r")
+            print(PREFIX .. icon .. spell .. " " .. ns.Palette.hex("success") .. L["interrupted"] .. "|r")
         else
-            print(PREFIX .. icon .. spell .. " |cffff3333" .. L["NOT interrupted"] .. "|r")
+            print(PREFIX .. icon .. spell .. " " .. ns.Palette.hex("danger") .. L["NOT interrupted"] .. "|r")
         end
     end)
 end

@@ -299,7 +299,8 @@ local function FindTank()
             if want then
                 local name = UnitName(unit)
                 if name and name:lower() == want then return unit end
-            elseif UnitGroupRolesAssigned(unit) == "TANK" then
+            elseif UnitGroupRolesAssigned(unit) == "TANK"
+                or (GetPartyAssignment and GetPartyAssignment("MAINTANK", unit)) then
                 return unit
             end
         end
@@ -342,6 +343,10 @@ local function CollectIDs(unit, n)
             ok, ids = pcall(C_UnitAuras.GetUnitAuraInstanceIDs, unit, "HARMFUL", n, rule,
                 Enum.UnitAuraSortDirection and Enum.UnitAuraSortDirection.Normal)
         else
+            ok, ids = pcall(C_UnitAuras.GetUnitAuraInstanceIDs, unit, "HARMFUL", n)
+        end
+        -- si el ordenamiento falla o no devuelve nada, se reintenta sin él
+        if not (ok and type(ids) == "table" and #ids > 0) then
             ok, ids = pcall(C_UnitAuras.GetUnitAuraInstanceIDs, unit, "HARMFUL", n)
         end
         if ok and type(ids) == "table" then
@@ -523,6 +528,11 @@ function TankDebuffs.Slash(arg)
     elseif cmd == "status" then
         local name = TankDebuffs.TrackedName()
         print(PREFIX .. (name and string.format(L["Following: %s"], name) or L["No tank to follow right now."]))
+        local c = cfg()
+        local ids = trackedUnit and CollectIDs(trackedUnit, Shown())
+        print(string.format("enabled=%s mode=%s unit=%s role=%s auras=%s", tostring(c.enabled), tostring(c.mode),
+            tostring(trackedUnit), trackedUnit and tostring(UnitGroupRolesAssigned(trackedUnit)) or "-",
+            ids and tostring(#ids) or "-"))
     else
         print(PREFIX .. L["Usage: /modi tankdebuffs add <spellID> | remove <spellID> | capture | status"])
     end

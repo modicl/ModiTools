@@ -356,11 +356,27 @@ local function PlayLimited(key)
     ns.PlayFocusSound(key)
 end
 
--- Con "solo interrumpibles", si no se puede saber (datos secretos) suena igual.
+-- Con "solo interrumpibles": en contenido restringido el dato "no interrumpible" es secreto y no se puede
+-- usar en un `if`. Se le pasa a un marco sonda: SetShown acepta el valor y el propio juego dispara OnShow
+-- solo si el casteo NO es interrumpible. Si la sonda no puede usarse, se prefiere avisar de más que perderse un casteo.
+local probe = CreateFrame("Frame")
+probe:Hide()
+local probeBlocked = false
+probe:SetScript("OnShow", function() probeBlocked = true end)
+
 local function ShouldPlayStart(c)
     if not c.soundOnlyInterruptible then return true end
     local ok, res = pcall(function()
-        local _, _, _, _, _, notInt = ReadCast()
+        local name, _, _, _, _, notInt = ReadCast()
+        if not name then return true end
+        if issecretvalue and issecretvalue(notInt) then
+            probeBlocked = false
+            probe:Hide()
+            local shown = pcall(probe.SetShown, probe, notInt)
+            probe:Hide()
+            if shown then return not probeBlocked end
+            return true
+        end
         return not notInt
     end)
     if ok then return res end

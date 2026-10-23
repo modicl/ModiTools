@@ -6,21 +6,21 @@
 ## Version: 0.9
 ## SavedVariables: ModiToolsDB
 
-Locales.lua
-Palette.lua
-Core.lua
-Glow.lua
-Secrets.lua
-Profiles.lua
-Yards.lua
-Sounds.lua
-FocusCast.lua
-MarkedCasts.lua
-Prepot.lua
-ThreatAlert.lua
-BrezKey.lua
-Timeline.lua
-TankDebuffs.lua
-Options.lua
-Changelog.lua
-Minimap.lua
+Core\Locales.lua
+Core\Palette.lua
+Core\Core.lua
+Core\Glow.lua
+Core\Secrets.lua
+Core\Profiles.lua
+Modules\Yards\Yards.lua
+Core\Sounds.lua
+Modules\FocusCast\FocusCast.lua
+Modules\MarkedCasts\MarkedCasts.lua
+Modules\Prepot\Prepot.lua
+Modules\ThreatAlert\ThreatAlert.lua
+Modules\BrezKey\BrezKey.lua
+Modules\Timeline\Timeline.lua
+Modules\TankDebuffs\TankDebuffs.lua
+UI\Options.lua
+UI\Changelog.lua
+UI\Minimap.lua

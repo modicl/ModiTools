@@ -15,6 +15,21 @@ ns.Changelog = Changelog
 
 Changelog.entries = {
     {
+        version = "0.10", date = "2026-10",
+        en = {
+            "Prepot: new sound for when the potion in use is about to end (you choose how many seconds are left). Made for potions like Liquid Luster, so you can use them at the best moment. It also works without the icon.",
+            "New voice sound: Peak Liquid Luster.",
+            "Removed the Marked casts and CD Timeline tools. Their settings are no longer used.",
+            "The addon files are now organized in folders (Core, Modules, UI).",
+        },
+        es = {
+            "Prepot: nuevo sonido para cuando a la poción en uso le quedan pocos segundos (tú eliges cuántos). Pensado para pociones como Liquid Luster, para usarlas en el mejor momento. También funciona sin el ícono.",
+            "Nuevo sonido de voz: Liquid Luster al máximo.",
+            "Se eliminaron las herramientas Casteos marcados y CD Timeline. Sus ajustes ya no se usan.",
+            "Los archivos del addon ahora están ordenados en carpetas (Core, Modules, UI).",
+        },
+    },
+    {
         version = "0.9", date = "2026-10",
         en = {
             "New tool: Tank debuffs. Follows the other tank's debuffs as icons with stacks, time left and tooltip. Choose how many to show, columns, rows, size and growth direction, plus a whitelist and an optional glow.",

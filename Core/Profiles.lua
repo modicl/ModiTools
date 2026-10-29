@@ -269,7 +269,7 @@ local function Sanitize(value, default)
             if type(value) == "table" then v = value[k] end
             out[k] = Sanitize(v, d)
         end
-        -- tablas sin campos fijos (prepot.extra, timeline.spells: listas de spellIDs)
+        -- tablas sin campos fijos (prepot.extra, tankdebuffs.spells: listas de spellIDs)
         if next(default) == nil and type(value) == "table" then
             for k, v in pairs(value) do
                 local isKey = type(k) == "number" or type(k) == "string"
@@ -278,7 +278,7 @@ local function Sanitize(value, default)
                 elseif type(k) == "number" and type(v) == "number" and v ~= 0 and math.abs(v) < 10000000 then
                     out[k] = v   -- listas de IDs (negativo = objeto)
                 elseif type(k) == "number" and type(v) == "table" then
-                    -- ajustes por hechizo (p. ej. timeline.spellSounds): solo textos y números simples
+                    -- ajustes por hechizo: solo textos y números simples
                     local inner = {}
                     for kk, vv in pairs(v) do
                         if type(kk) == "string" and #kk <= 20 then

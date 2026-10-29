@@ -3,7 +3,7 @@
 ## Notes: Utilidades: yardas al target, barra de casteo del focus, casteos de mobs marcados, alerta de threat, brez en una tecla, línea de cooldowns y duración de la prepot. /modi para configurar.
 ## Author: Villa
 ## X-License: MIT
-## Version: 0.9
+## Version: 0.10
 ## SavedVariables: ModiToolsDB
 
 Core\Locales.lua
@@ -15,11 +15,9 @@ Core\Profiles.lua
 Modules\Yards\Yards.lua
 Core\Sounds.lua
 Modules\FocusCast\FocusCast.lua
-Modules\MarkedCasts\MarkedCasts.lua
 Modules\Prepot\Prepot.lua
 Modules\ThreatAlert\ThreatAlert.lua
 Modules\BrezKey\BrezKey.lua
-Modules\Timeline\Timeline.lua
 Modules\TankDebuffs\TankDebuffs.lua
 UI\Options.lua
 UI\Changelog.lua

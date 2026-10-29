@@ -55,6 +55,8 @@ do
           file = "Interface\\AddOns\\ModiTools\\Media\\trinket_ready.mp3" })
     add({ value = "mt_healing_potion_ready", en = "Healing potion ready (voice)",
           file = "Interface\\AddOns\\ModiTools\\Media\\healing_potion_ready.mp3" })
+    add({ value = "mt_peak_liquid", en = "Peak Liquid Luster (voice)",
+          file = "Interface\AddOns\ModiTools\Media\peak_liquid.mp3" })
 
     add({ header = true, en = "Classic" })
     add({ value = "raid", en = "Raid warning", id = 8959 })

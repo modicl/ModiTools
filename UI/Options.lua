@@ -845,7 +845,6 @@ local function NewBuilder(panel)
 
         self.refreshers[#self.refreshers + 1] = function()
             local list = getList()
-            local module = module or ns.modules.timeline
             for i, row in ipairs(rows) do
                 local id = list[i]
                 if id then
@@ -1118,10 +1117,8 @@ local function BuildHome()
         L["Utilities for your interface, each with its own page in the sidebar:"] .. "\n\n"
         .. "- " .. L["Yards: distance to your target."] .. "\n"
         .. "- " .. L["Focus cast: your focus' cast bar."] .. "\n"
-        .. "- " .. L["Marked casts: casts of marked mobs."] .. "\n"
         .. "- " .. L["Threat alert: warning when you lose aggro."] .. "\n"
         .. "- " .. L["Brez: combat res on a key."] .. "\n"
-        .. "- " .. L["CD Timeline: upcoming cooldowns of your spells."] .. "\n"
         .. "- " .. L["Tank debuffs: the other tank's debuffs as icons."] .. "\n"
         .. "- " .. L["Prepot/Trinket: potion timer, plus ready sounds for potions and trinkets."] .. "\n\n"
         .. L["The dot next to each tool shows whether it is enabled."],
@@ -1147,7 +1144,7 @@ local function BuildHome()
     frame:SetScript("OnShow", function() hb:Refresh() end)
 
     local cmds = Label(frame,
-        L["Commands:"] .. "  /modi   ·   /modi yards|focus|marked|threat|brez|timeline|tankdebuffs|prepot   ·   "
+        L["Commands:"] .. "  /modi   ·   /modi yards|focus|threat|brez|tankdebuffs|prepot   ·   "
         .. "/modi unlock|lock " .. L["<tool|all>"] .. "   ·   /modi reset   ·   /modi minimap   ·   /modi lang en|es",
         10, C.muted)
     cmds:SetWidth(780)
@@ -1452,21 +1449,6 @@ function ns.OpenPicker(source)
 end
 
 -- Fuentes del selector
-local timelineSource = {
-    title = function() return L["Pick from my spells and items"] end,
-    hint = function() return L["Click an entry to add or remove it."] end,
-    scan = function() return ns.modules.timeline.ScanEntries() end,
-    isOn = function(e) return ns.modules.timeline.IsTracked(e.id) end,
-    toggle = function(e)
-        local m = ns.modules.timeline
-        if m.IsTracked(e.id) then return m.RemoveEntry(e.id) end
-        return m.AddEntry(e.id)
-    end,
-    status = function()
-        return string.format(L["%d of %d on the timeline"], #ns.db.timeline.spells, ns.modules.timeline.MaxSpells)
-    end,
-}
-
 local healingSource = {
     title = function() return L["Choose your healing potions"] end,
     hint = function() return L["Click a potion to mark it as a healing potion, or click again to unmark it."] end,
@@ -1481,11 +1463,6 @@ local healingSource = {
     end,
     status = function() return string.format(L["%d potions marked as healing"], ns.modules.prepot.HealingCount()) end,
 }
-
-function ns.OpenSpellPicker()
-    EnsureBuilt()
-    ns.OpenPicker(timelineSource)
-end
 
 local function BuildAll()
     ns.LocalizeSounds()
@@ -1549,36 +1526,6 @@ local function BuildAll()
     fb:Color(L["Background"], "focus", "colorBG", true)
     fb:Color(L["Border"], "focus", "colorBorder", true)
     fb:Button(L["Restore defaults"], function() ns.ResetModule("focus") end)
-
-    -- Casteos de mobs marcados
-    local mb = MakePage("marked", L["Marked casts"],
-        L["Bars with the casts of marked mobs, showing whether they were interrupted."], "marked")
-    GeneralSection(mb, "marked")
-    mb:Header(L["Appearance"])
-    mb:Slider(L["Width"], 100, 500, 5, Bind("marked", "width"))
-    mb:Slider(L["Height"], 10, 50, 1, Bind("marked", "height"))
-    mb:Slider(L["Spacing"], 0, 20, 1, Bind("marked", "spacing"))
-    mb:Slider(L["Max bars"], 1, 8, 1, Bind("marked", "maxBars"))
-    mb:Slider(L["Opacity"], 0.2, 1, 0.05, Bind("marked", "alpha"))
-    mb:Slider(L["Font size"], 8, 24, 1, Bind("marked", "fontSize"))
-    mb:Cycle(L["Texture"], textureOptions, Bind("marked", "texture"))
-    mb:Check(L["Grow upward"], Bind("marked", "growUp"))
-    mb:Button(L["Restore defaults"], function() ns.ResetModule("marked") end)
-    mb:NewColumn()
-    mb:Header(L["Result"])
-    mb:Check(L["Show the result on the bar"], Bind("marked", "showResult"))
-    mb:Check(L["Announce in chat"], Bind("marked", "chatMessage"))
-    mb:Slider(L["Result duration (s)"], 0.5, 5, 0.5, Bind("marked", "resultSeconds"))
-    mb:Check(L["Show time"], Bind("marked", "showTime"))
-    mb:Check(L["Show border"], Bind("marked", "showBorder"))
-    mb:Header(L["Colors"])
-    mb:Color(L["Normal cast"], "marked", "colorCast")
-    mb:Color(L["Channel"], "marked", "colorChannel")
-    mb:Color(L["Uninterruptible"], "marked", "colorLocked")
-    mb:Color(L["Interrupted"], "marked", "colorInterrupted")
-    mb:Color(L["Not interrupted"], "marked", "colorNotInterrupted")
-    mb:Color(L["Background"], "marked", "colorBG", true)
-    mb:Color(L["Border"], "marked", "colorBorder", true)
 
     -- Alerta de threat
     local threatSounds = {}
@@ -1707,6 +1654,12 @@ local function BuildAll()
     pi:Header(L["Potion ready sound"])
     pi:Check(L["Sound when the potion is ready"], Bind("prepot", "soundReady"))
     pi:Cycle(L["Ready sound"], prepotSounds, Bind("prepot", "soundReadyKey"))
+    pi:Header(L["Potion ending sound"])
+    local getEnd, setEnd = Bind("prepot", "endSound")
+    pi:Check(L["Sound when the potion is about to end"], getEnd, setEnd,
+        L["Useful for potions like Liquid Luster, to use them at the best moment."])
+    pi:Slider(L["Seconds left"], 1, 60, 1, Bind("prepot", "endSoundAt"))
+    pi:Cycle(L["Ending sound"], prepotSounds, Bind("prepot", "endSoundKey"))
 
     -- Subpágina Poción de HP: sonido y cuáles son tus pociones de vida
     local ph = MakePage("prepot_hp", L["HP potion"],
@@ -1741,149 +1694,6 @@ local function BuildAll()
     pt:Info(function()
         return L["Pick the trinkets to watch. When you use one, the sound plays as soon as its cooldown ends. Only trinkets with an on-use effect work."]
     end, 4)
-
-    -- Línea de tiempo de cooldowns
-    local tlStatus, tlSpellField, tlKind = "", "", "spell"
-    local kindOptions = {
-        { value = "spell", label = L["Spell"] },
-        { value = "item", label = L["Item"] },
-    }
-    local tl = MakePage("timeline", "CD Timeline",
-        L["A timeline of the cooldowns you choose, showing when they come back."], "timeline")
-    GeneralSection(tl, "timeline")
-    local orientationOptions = {
-        { value = "H", label = L["Horizontal"] },
-        { value = "V", label = L["Vertical"] },
-    }
-    tl:Header(L["Add to the timeline"])
-    tl:Button(L["Pick from my spells and items"], function() ns.OpenPicker(timelineSource) end)
-    tl:Cycle(L["Type"], kindOptions, function() return tlKind end, function(v) tlKind = v end)
-    tl:Input(L["ID"], function() return tlSpellField end, function(v) tlSpellField = v end, true)
-    tl:Button(L["Add"], function()
-        local add = tlKind == "item" and ns.modules.timeline.AddItem or ns.modules.timeline.AddSpell
-        local ok, msg = add(tlSpellField)
-        if ok then tlSpellField = "" end
-        tlStatus = msg
-        print(ns.PREFIX .. msg)
-        ns.RefreshOptions()
-    end)
-    tl:Info(function()
-        if tlStatus ~= "" then return tlStatus end
-        return L["Pick from the list, or type a spell or item ID (the number in its wowhead.com page) and press Add."]
-    end, 2)
-    tl:Header(L["Timing"])
-    tl:Slider(L["Appear within (s)"], 5, 120, 1, Bind("timeline", "window"))
-    tl:Slider(L["Ignore cooldowns under (s)"], 1, 10, 0.5, Bind("timeline", "minCooldown"))
-    local combatGet, combatSet = Bind("timeline", "combatOnly")
-    tl:Check(L["Only in combat"], combatGet, combatSet,
-        L["The timeline is only shown while you are in combat, and its sounds (warning and ready) are muted outside of combat. Cooldowns keep being tracked, so everything works as soon as you enter combat. The preview (unlocked) is always visible so you can move it."])
-    tl:NewColumn()
-    tl:Header(L["On the timeline"])
-    tl:SpellList(function() return ns.db.timeline.spells end, function(id)
-        -- RemoveEntry respeta el signo del ID (negativo = objeto); RemoveSpell lo volvería positivo
-        local _, msg = ns.modules.timeline.RemoveEntry(id)
-        tlStatus = msg
-        ns.RefreshOptions()
-    end, 12)
-    tl:Cycle(L["Orientation"], orientationOptions, Bind("timeline", "orientation"))
-    tl:Button(L["Restore defaults"], function() ns.ResetModule("timeline") end)
-
-    local ts = MakePage("timeline_style", L["Timeline style"],
-        L["Orientation, size and colors of the timeline."], nil, { parent = "timeline", label = L["Style"] })
-    ts:Header(L["Layout"])
-    ts:Cycle(L["Orientation"], orientationOptions, Bind("timeline", "orientation"))
-    ts:Cycle(L["Font"], fontOptions, Bind("timeline", "font"))
-    ts:Check(L["Reverse direction"], Bind("timeline", "reverse"))
-    ts:Slider(L["Length"], 100, 900, 5, Bind("timeline", "length"))
-    ts:Slider(L["Thickness"], 2, 40, 1, Bind("timeline", "thickness"))
-    ts:Slider(L["Icon size"], 16, 64, 1, Bind("timeline", "iconSize"))
-    ts:Slider(L["Opacity"], 0.2, 1, 0.05, Bind("timeline", "alpha"))
-    ts:Slider(L["Font size"], 8, 20, 1, Bind("timeline", "fontSize"))
-    ts:Header(L["Elements"])
-    ts:Check(L["Show time"], Bind("timeline", "showTime"))
-    ts:Check(L["Show ticks"], Bind("timeline", "showTicks"))
-    ts:Check(L["Show now marker"], Bind("timeline", "showNow"))
-    ts:Check(L["Flash when ready"], Bind("timeline", "flashReady"))
-    ts:Check(L["Icon border"], Bind("timeline", "iconBorder"))
-    ts:NewColumn()
-    ts:Header(L["Colors"])
-    ts:Color(L["Line"], "timeline", "colorLine", true)
-    ts:Color(L["Ticks"], "timeline", "colorTick", true)
-    ts:Color(L["Now marker"], "timeline", "colorNow")
-    ts:Color(L["Border"], "timeline", "colorBorder", true)
-    ts:Header(L["Visibility"])
-    ts:Check(L["Always show the line"], Bind("timeline", "alwaysShow"))
-
-    -- Sonidos de la línea de cooldowns
-    local tsSelected
-    local globalSounds = {}
-    for i, e in ipairs(ns.FocusSounds) do globalSounds[i] = e end
-    globalSounds.preview = function(v) ns.PlaySoundKey(v, ns.db.timeline.soundCustom) end
-
-    -- por hechizo: opciones especiales primero, luego la lista completa de sonidos
-    local perSpellSounds = {
-        { header = true, label = L["Options"] },
-        { value = "global", label = L["Use the global sound"] },
-        { value = "none", label = L["No sound"] },
-    }
-    for _, e in ipairs(ns.FocusSounds) do perSpellSounds[#perSpellSounds + 1] = e end
-    perSpellSounds.preview = globalSounds.preview
-
-    local spellChoices = {}
-    local function RefreshSpellChoices()
-        for i = #spellChoices, 1, -1 do spellChoices[i] = nil end
-        local found = false
-        for _, id in ipairs(ns.db.timeline.spells) do
-            spellChoices[#spellChoices + 1] = {
-                value = id,
-                label = (ns.modules.timeline.EntryName(id) or L["Unknown spell"]) .. " (" .. math.abs(id) .. ")",
-            }
-            if id == tsSelected then found = true end
-        end
-        if not found then tsSelected = spellChoices[1] and spellChoices[1].value or nil end
-    end
-
-    local function SpellSound(field, default)
-        return function()
-            local s = tsSelected and ns.db.timeline.spellSounds[tsSelected]
-            return (s and s[field]) or default
-        end,
-        function(v)
-            if not tsSelected then return end
-            local all = ns.db.timeline.spellSounds
-            all[tsSelected] = all[tsSelected] or {}
-            if field == "warnAt" and v == 0 then v = nil end
-            all[tsSelected][field] = v
-        end
-    end
-
-    local tsd = MakePage("timeline_sound", L["Timeline sounds"],
-        L["Sounds for when your cooldowns are about to end or are ready."], nil, { parent = "timeline", label = L["Sounds"] })
-    tsd.refreshers[#tsd.refreshers + 1] = RefreshSpellChoices
-    tsd:Header(L["All spells"])
-    tsd:Check(L["Sound when a cooldown is about to end"], Bind("timeline", "soundWarn"))
-    tsd:Cycle(L["Warning sound"], globalSounds, Bind("timeline", "soundWarnKey"))
-    tsd:Slider(L["Warn at (s)"], 1, 60, 1, Bind("timeline", "warnAt"))
-    tsd:Check(L["Sound when ready"], Bind("timeline", "soundReady"))
-    tsd:Cycle(L["Ready sound"], globalSounds, Bind("timeline", "soundReadyKey"))
-    tsd:Info(function()
-        return L["Choose \"Custom\" in a sound list and set it with /modi timeline sound <soundkitID or file path>."]
-    end, 3)
-    tsd:NewColumn()
-    tsd:Header(L["Per spell or item"])
-    tsd:Cycle(L["Spell or item"], spellChoices,
-        function() return tsSelected end,
-        function(v) tsSelected = v; ns.RefreshOptions() end)
-    tsd:Info(function()
-        if #ns.db.timeline.spells == 0 then return L["Add something to the timeline first."] end
-        return L["Choose a spell or item to give it its own sounds. \"Use the global sound\" keeps the shared one."]
-    end, 3)
-    local getWarn, setWarn = SpellSound("warn", "global")
-    tsd:Cycle(L["Warning sound"], perSpellSounds, getWarn, setWarn, function() return ns.db.timeline.soundWarnKey end)
-    tsd:Slider(L["Warn at (s), 0 = global"], 0, 60, 1, SpellSound("warnAt", 0))
-    local getReady, setReady = SpellSound("ready", "global")
-    tsd:Cycle(L["Ready sound"], perSpellSounds, getReady, setReady, function() return ns.db.timeline.soundReadyKey end)
-
 
     -- Debuffs del otro tank
     local tdStatus = ""

@@ -30,6 +30,7 @@ local defaults = {
     trinketSound = true, trinketSoundKey = "mt_trinket_ready",   -- sonido cuando un trinket vuelve a estar listo
     trinketSlots = { [13] = true, [14] = true },                 -- qué trinkets equipados se vigilan (ranuras 13 y 14)
     healingSound = true, healingSoundKey = "mt_healing_potion_ready",   -- sonido de la poción de vida (HP)
+    endSound = false, endSoundAt = 5, endSoundKey = "mt_peak_liquid",   -- sonido cuando a la poción en uso le quedan X segundos
     healingSpells = {},   -- [spellID de uso] = true/false: marcado a mano como poción de HP / de combate (nil = automático)
 }
 
@@ -110,10 +111,29 @@ local function Stop()
     Render()
 end
 
+-- Sonido de "quedan X segundos": un único temporizador por poción (no depende del ícono ni de OnUpdate,
+-- que no corre con el marco oculto). Se reprograma si el buff se refresca.
+local function ScheduleEndSound()
+    local t = tracked
+    if not t then return end
+    t.endToken = (t.endToken or 0) + 1
+    local c = cfg()
+    if not c.enabled or not c.endSound or (c.endSoundAt or 0) <= 0 then return end
+    local delay = t.expiration - c.endSoundAt - GetTime()
+    if delay <= 0 then return end   -- ya está dentro de esa ventana (o la poción dura menos): no suena
+    local token, exp = t.endToken, t.expiration
+    C_Timer.After(delay, function()
+        if tracked ~= t or t.endToken ~= token or t.expiration ~= exp then return end
+        local cc = cfg()
+        if ns.debug then print(PREFIX .. "prepot: potion ending") end
+        ns.PlaySoundKey(cc.endSoundKey, cc.soundCustom)
+    end)
+end
+
 local function Start(spellID, tex, duration, expiration, isTest)
-    if not cfg().showIcon then tracked = nil; Render(); return end   -- sin ícono no hay nada que seguir en pantalla
     tracked = { spellID = spellID, icon = tex, duration = duration, expiration = expiration, test = isTest }
-    Render()
+    ScheduleEndSound()
+    Render()   -- sin ícono (showIcon = false) el marco queda oculto, pero la poción se sigue para el sonido
 end
 
 local function OnUpdate()
@@ -234,6 +254,7 @@ local function CheckTracked()
         Stop()
     elseif exp ~= tracked.expiration then
         tracked.expiration = exp
+        ScheduleEndSound()
         Render()
     end
 end
